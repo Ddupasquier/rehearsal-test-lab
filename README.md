@@ -66,6 +66,10 @@ This leaves the lab projects untouched. It checks automatic root configuration,
 preservation of existing ignore rules and malformed configs, and recovery of a missing
 generated Supabase runtime file.
 
+GitHub Actions runs this boundary against the currently published `beta` package. An
+unpublished candidate must still be supplied locally by exact path and checksum; the lab
+does not download unreviewed artifacts from another repository automatically.
+
 ## Non-negotiable safety boundary
 
 - Never point routine tests at BlendCalc or another production database.
