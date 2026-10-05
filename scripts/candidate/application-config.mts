@@ -18,8 +18,13 @@ const findFreePort = (): Promise<number> =>
     });
   });
 
-export async function createCandidateConfiguration(project: string) {
-  const port = await findFreePort();
+export async function createCandidateConfiguration(
+  project: string,
+  requestedPort?: number,
+) {
+  const port = requestedPort ?? (await findFreePort());
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535)
+    throw new Error("Invalid application port.");
   const relativePath = ".rehearsal/candidate.config.mjs";
   const serverPath = resolve(project, ".rehearsal/candidate-server.mjs");
   const proofPath = resolve(project, ".rehearsal/candidate-proof.mjs");

@@ -1,0 +1,79 @@
+# Expansion coverage and development workflow
+
+The lab consumes an exact packed public package. Add observable assertions in this
+repository rather than importing Rehearsal implementation modules. Keep data synthetic,
+scope access explicitly, and verify database results independently of CLI success.
+
+## Current coverage and next additions
+
+| Contract             | Implemented coverage                                                                        | Next scenario                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Package installation | Exact hash and installed bytes; unsafe archives; fresh onboarding and partial recovery      | Upgrade an existing disposable consumer from previous release to candidate                |
+| Source access        | Reviewed scope, pseudonymization, retirement, private asset copy                            | Interrupted refresh must preserve the last valid baseline and retire temporary access     |
+| Restore              | PostgreSQL and Supabase, multiple schemas, identities, generated columns, exact asset bytes | Corrupt baseline and interrupted restore must fail without touching the source            |
+| Migration            | One confirmed candidate per provider                                                        | Failing migration; modified candidate after confirmation; explicit retry behavior         |
+| Application          | HTTP readiness and real data proofs; fail closed without database                           | Authentication, multi-target, and provider-specific proofs as their public contracts land |
+| Cleanup              | Confirmation-based target removal, ownership refusal, unrelated sentinel preservation       | Interrupt a full run after useful state exists and verify recovery                        |
+| Concurrency          | Independent workspace/install/IDs/port blocks; serialized Supabase phase                    | Repeat paired full runs on shared development machines                                    |
+| Performance          | Stage and total durations, package bytes, runner peak RSS                                   | Larger deterministic datasets and measured Docker/child-process memory                    |
+
+The next-scenario column is a backlog, not a claim that these checks already run.
+The previous manual stale-confirmation and injected-failure investigations should become
+repeatable scenarios before those features expand further.
+
+## Acceptance contract for a feature owner
+
+Copy this checklist into the feature issue or PR before implementation:
+
+- **Public change:** command/configuration behavior and supported provider(s).
+- **Compatibility:** previous supported version/configuration and behavior to preserve.
+- **Fixture:** smallest synthetic data model that exposes the change.
+- **Positive result:** exact rows, bytes, schema, application response, or runtime state.
+- **Failure result:** deliberate fault, expected refusal/recovery, and state that must survive.
+- **Resources:** required runtimes, expected dataset size, and whether Supabase is needed.
+- **Evidence:** artifact SHA-256, acceptance and isolation reports, and any untested contract.
+
+A feature is ready for release when its scenario is repeatable from the packed artifact,
+its independent assertions pass, and cleanup succeeds. A generic happy-path acceptance
+run does not prove a new feature that has no scenario yet.
+
+## Efficient work tiers
+
+1. Every change: `npm run check` (compiler, layout/credential checks, independent tests).
+2. During implementation: use the relevant synthetic consumer and focused scenario.
+3. Release candidate: `npm run candidate:verify -- /absolute/path/to/candidate.tgz`.
+   Require both report verdicts; record unsupported or deliberately omitted scenarios.
+4. Compatibility expansion: add a disposable upgrade scenario before changing defaults.
+   Keep the previous-version and candidate artifacts distinct and hash both.
+
+GitHub runs fast checks on Node 22/24/26 plus PostgreSQL and published onboarding.
+Unpublished artifacts still require explicit local selection. Heavy Supabase runs stay
+local and serialize; routine work creates no hosted Supabase compute.
+
+## Isolation and recovery
+
+The wrapper copies Git's non-ignored file inventory, including uncommitted source changes,
+but excludes generated candidate-probe migrations. It never copies ignored dependencies,
+credentials, baselines, runtime directories, or report output. Only local resource names,
+ports, and their source-policy fingerprints are rebound; reviewed relation/asset scopes
+stay the same. Supabase project IDs remain below its 40-character limit.
+
+Port leases live in the operating system temporary directory under
+`rehearsal-test-lab-leases/ports-<base>/owner.json`. Supabase's shared slot has its own
+`supabase/owner.json`. Inspect the recorded process/workspace before removing a stale lease;
+the lab never assumes elapsed time means an owner is gone. Unrelated programs can still
+claim a port between the availability check and runtime startup; that causes a reported
+failure rather than reuse of another run's identity.
+
+`workspace-snapshot.json` records the files and hashes used by the run, including the
+rebound configuration. Successful workspace deletion unlocks only directories inside
+that snapshot to remove immutable baseline generations; it does not follow symlinks.
+
+Signals forwarded to the worker trigger outer cleanup after it exits. An abrupt machine
+shutdown or forced kill can leave resources and leases; use `isolation.json` and ownership
+labels to investigate. Failed workspaces contain ignored synthetic credentials: keep them
+local and delete them when diagnosis is complete. No global Docker prune is used.
+
+Timing and package-size measurements are evidence, not performance gates yet. Runner RSS
+excludes subprocess and Docker memory; establish repeated measurements before setting
+budgets or comparing different hardware.

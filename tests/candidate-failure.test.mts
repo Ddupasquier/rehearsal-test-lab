@@ -56,7 +56,7 @@ require("node:fs").appendFileSync(process.env.LAB_FAKE_COMMANDS, JSON.stringify(
       [
         "--import",
         import.meta.resolve("tsx"),
-        "scripts/verify-candidate.mts",
+        "scripts/verify-candidate-worker.mts",
         artifact,
       ],
       {

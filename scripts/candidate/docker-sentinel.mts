@@ -9,8 +9,10 @@ import {
 
 type ResourceType = "container" | "network" | "volume";
 
-export function createDockerSentinel() {
-  const suffix = randomUUID().slice(0, 8);
+export function createDockerSentinel(runId?: string) {
+  const suffix = runId ?? randomUUID().slice(0, 8);
+  if (!/^[a-z0-9-]{1,40}$/u.test(suffix))
+    throw new Error("Invalid Docker sentinel run identity.");
   const names = {
     container: `rehearsal-lab-sentinel-${suffix}`,
     network: `rehearsal-lab-sentinel-${suffix}`,

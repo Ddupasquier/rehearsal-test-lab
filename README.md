@@ -102,13 +102,20 @@ proofs, exact-confirmation cleanup, and preservation of unrelated Docker resourc
 writes a readable Markdown report and a machine-readable JSON report below
 `test-results/candidate-acceptance/`.
 
-The command uses only the lab's local synthetic sources. It stops the lab source services
-when finished and removes its temporary Docker sentinel. Existing database source volumes
-are preserved. The active baseline and configured retained generations remain; older
-eligible generations may be removed according to the checked-in retention setting.
-Disposable Rehearsal targets are removed through the package's own reviewed cleanup
-command. The exact candidate remains installed in both ignored `node_modules` trees for
-follow-up inspection.
+Each run snapshots the lab and exact tarball into its own workspace. Package installs,
+privacy keys, baselines, migrations, Docker identities, and ports are independent of your
+checkout and other acceptance runs. Existing local lab services and volumes are untouched.
+PostgreSQL phases can overlap; Supabase phases share a machine-wide resource slot so two
+heavy stacks do not compete for memory. These leases coordinate lab runs, not other tools.
+
+Successful runs remove their workspace and run-owned Docker resources. Failed workspaces
+remain for diagnosis. Both `acceptance.json` and `isolation.json` must pass: the latter
+records artifact identity, runtime bindings, and outer cleanup. A Docker cleanup failure retains
+the port lease so the ports cannot be reused by another lab run. Reports and the exact
+tarball remain under `test-results/candidate-acceptance/`.
+
+See [Expansion coverage](docs/expansion-coverage.md) for implemented checks, the next
+scenarios, and an acceptance contract for feature owners.
 
 ## Non-negotiable safety boundary
 

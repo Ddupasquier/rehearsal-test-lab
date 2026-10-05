@@ -6,6 +6,7 @@ import type { JsonObject } from "../shared/validation.mts";
 
 export interface Artifact {
   sha256: string;
+  bytes?: number;
   name?: string;
   version?: string;
 }
@@ -102,6 +103,11 @@ export function createReporter({
         platform: process.platform,
         architecture: process.arch,
         node: process.version,
+      },
+      measurements: {
+        runnerPeakRssBytes: process.resourceUsage().maxRSS * 1024,
+        scope:
+          "Acceptance runner process only; excludes child processes and Docker runtimes.",
       },
       artifact: { path: artifactPath, ...artifact },
       stages,

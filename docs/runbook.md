@@ -29,7 +29,15 @@ fails if any required check is skipped or inconclusive. Its Markdown and JSON re
 appear under `test-results/candidate-acceptance/`. Review the report before asking a
 downstream application such as BlendCalc to perform focused consumer-only checks.
 
+Acceptance now runs in a private snapshot with dedicated installs, resource names, and
+ports. Require both `acceptance.json` and `isolation.json` to pass. The snapshot inventory
+and exact tarball remain with the reports. PostgreSQL work can overlap; heavy Supabase
+phases wait for a shared resource slot. See [Expansion coverage](expansion-coverage.md)
+for the feature acceptance contract and recovery instructions.
+
 The remaining steps document the same lifecycle for investigation and manual testing.
+Those manual commands use the shared consumer directories and fixed ports; avoid running
+multiple manual sessions against the same consumer.
 To check onboarding by itself, run this from the lab root before either database
 lifecycle:
 
