@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const requiredFiles = [
   "README.md",
-  ".github/workflows/verify.yml",
+  ".github/workflows/check.yml",
   "docs/architecture.md",
   "docs/runbook.md",
   "docs/safety.md",

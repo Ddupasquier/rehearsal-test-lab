@@ -35,3 +35,16 @@ jobs:
         run: docker compose -f projects/postgresql/compose.yaml down
       - if: always()
         run: docker volume rm rehearsal_lab_postgresql || true
+
+  published-onboarding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify the currently published beta
+        run: |
+          tarball="$(npm pack @rehearsal-db/core@beta --silent --pack-destination "$RUNNER_TEMP")"
+          npm run onboarding:verify -- "$RUNNER_TEMP/$tarball"
