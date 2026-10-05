@@ -4,9 +4,11 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const requiredFiles = [
   "README.md",
+  ".github/workflows/check.yml",
   "docs/architecture.md",
   "docs/runbook.md",
   "docs/safety.md",
+  "scripts/verify-onboarding.mjs",
   "projects/supabase/package.json",
   "projects/supabase/supabase/config.toml",
   "projects/supabase/supabase/seed.sql",

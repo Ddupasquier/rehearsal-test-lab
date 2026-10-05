@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "node scripts/check-layout.mjs",
+    "onboarding:verify": "node scripts/verify-onboarding.mjs",
     "supabase:start": "supabase start --workdir projects/supabase",
     "supabase:stop": "supabase stop --workdir projects/supabase",
     "supabase:reset": "supabase db reset --workdir projects/supabase",

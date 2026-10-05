@@ -55,6 +55,21 @@ The project-specific guides contain exact commands:
 For an unpublished Rehearsal candidate, install the exact tarball with `--no-save` in
 the selected consumer directory. Always record its SHA-256 in the acceptance report.
 
+Before starting either database lifecycle, verify first-install behavior in unrelated
+temporary Supabase and PostgreSQL projects:
+
+```bash
+npm run onboarding:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
+```
+
+This leaves the lab projects untouched. It checks automatic root configuration,
+preservation of existing ignore rules and malformed configs, and recovery of a missing
+generated Supabase runtime file.
+
+GitHub Actions runs this boundary against the currently published `beta` package. An
+unpublished candidate must still be supplied locally by exact path and checksum; the lab
+does not download unreviewed artifacts from another repository automatically.
+
 ## Non-negotiable safety boundary
 
 - Never point routine tests at BlendCalc or another production database.
