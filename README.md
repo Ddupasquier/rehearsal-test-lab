@@ -38,11 +38,29 @@ Use Node.js 22, 24, or 26, Docker or another Docker-compatible engine, and Supab
 
 ```bash
 nvm use
+npm ci --ignore-scripts
 npm run check
 ```
 
-The repository has intentionally not been committed yet. Review every file before the
-first commit, especially the migrations, synthetic seed, and safety rules.
+`npm run check` runs strict TypeScript checking, lab layout and credential checks, and
+the database-independent regression tests. CI runs these checks on Node.js 22, 24, and 26.
+
+## TypeScript development
+
+Lab scripts and fixture applications use ESM TypeScript (`.mts`). Commands load them
+with `node --import tsx`, including the temporary application wrappers used during
+candidate acceptance. Install the locked root development tools before running commands
+from either consumer directory; there is no separate build step or checked-in compiled
+output.
+
+The TypeScript settings follow Rehearsal's strict NodeNext conventions: strict checking,
+exact optional properties, checked indexed access, and unknown caught errors. Run
+`npm run typecheck` for the compiler alone, or `npm test` for the regression tests.
+
+The public `rehearsal.config.mjs` entry points remain executable JavaScript and are
+included in typechecking against `@rehearsal-db/core`'s published declarations. The root
+lockfile pins the tooling and the public configuration contract; exact candidate installs
+remain isolated in each consumer's ignored dependencies and do not modify this lockfile.
 
 ## Running one consumer
 

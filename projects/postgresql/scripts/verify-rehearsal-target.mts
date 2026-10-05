@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import pg from "pg";
+import { requireObject } from "../../../scripts/shared/validation.mts";
 
 const { Client } = pg;
 const project = resolve(import.meta.dirname, "..");
@@ -24,7 +25,7 @@ const client = new Client({ connectionString: environment.DATABASE_URL });
 await client.connect();
 
 try {
-  const { rows } = await client.query(`
+  const { rows } = await client.query<{ state: unknown }>(`
     select json_build_object(
       'accounts', (select count(*)::integer from lab_api.accounts),
       'entries', (select count(*)::integer from lab_api.entries),
@@ -49,7 +50,7 @@ try {
       )
     ) as state;
   `);
-  const state = rows[0].state;
+  const state = requireObject(rows[0]?.state, "PostgreSQL target state");
   const expected = {
     accounts: 1,
     entries: 10000,
@@ -66,13 +67,13 @@ try {
     }
   }
 
-  const inserted = await client.query(`
+  const inserted = await client.query<{ id: string | number }>(`
     insert into lab_api.entries (owner_id, title, amount, details, created_at)
     select id, 'Runtime sequence proof', 1.00, '{"synthetic":true}'::jsonb, now()
     from lab_api.accounts
     returning id;
   `);
-  const insertedId = Number(inserted.rows[0].id);
+  const insertedId = Number(inserted.rows[0]?.id);
   if (!Number.isSafeInteger(insertedId) || insertedId <= 10000) {
     throw new Error(
       `Numeric identity did not advance beyond 10000: ${insertedId}.`,

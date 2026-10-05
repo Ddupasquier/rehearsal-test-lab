@@ -4,7 +4,13 @@ import { resolve } from "node:path";
 export const root = resolve(import.meta.dirname, "..");
 export const supabaseProject = resolve(root, "projects/supabase");
 
-export function localSupabaseEnvironment() {
+export interface LocalSupabaseEnvironment {
+  API_URL: string;
+  SERVICE_ROLE_KEY: string;
+  DB_URL: string;
+}
+
+export function localSupabaseEnvironment(): LocalSupabaseEnvironment {
   const result = spawnSync(
     "supabase",
     ["status", "--workdir", supabaseProject, "--output", "env"],
@@ -17,21 +23,29 @@ export function localSupabaseEnvironment() {
     );
   }
 
-  const environment = {};
+  const environment: Record<string, string> = {};
   for (const line of result.stdout.split("\n")) {
     const match = /^([A-Z0-9_]+)="(.*)"$/.exec(line.trim());
-    if (match) environment[match[1]] = match[2];
+    if (match?.[1] && match[2] !== undefined) environment[match[1]] = match[2];
   }
 
-  if (!environment.API_URL || !environment.SERVICE_ROLE_KEY) {
+  if (
+    !environment.API_URL ||
+    !environment.SERVICE_ROLE_KEY ||
+    !environment.DB_URL
+  ) {
     throw new Error(
       "Supabase did not report the expected local API credentials.",
     );
   }
-  return environment;
+  return {
+    API_URL: environment.API_URL,
+    SERVICE_ROLE_KEY: environment.SERVICE_ROLE_KEY,
+    DB_URL: environment.DB_URL,
+  };
 }
 
-export function runLabSql(sql) {
+export function runLabSql(sql: string) {
   const result = spawnSync(
     "docker",
     [

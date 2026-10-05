@@ -11,6 +11,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import { requireArray, requireObject } from "./shared/validation.mts";
+
+type Target = "supabase" | "postgresql";
 
 const requestedTarball = process.argv[2];
 if (!requestedTarball) {
@@ -25,7 +28,7 @@ const tarball = isAbsolute(requestedTarball)
 const tarballDetails = await stat(tarball);
 assert.equal(tarballDetails.isFile(), true, "Candidate path is not a file");
 
-const run = (command, args, { cwd }) => {
+const run = (command: string, args: string[], { cwd }: { cwd: string }) => {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
@@ -44,7 +47,7 @@ const run = (command, args, { cwd }) => {
   return result.stdout;
 };
 
-const createConsumer = async (root, target) => {
+const createConsumer = async (root: string, target: Target) => {
   const migrationDirectory =
     target === "supabase" ? "supabase/migrations" : "database/migrations";
   await mkdir(join(root, migrationDirectory), { recursive: true });
@@ -75,7 +78,7 @@ const createConsumer = async (root, target) => {
   }
 };
 
-const installCandidate = (root) =>
+const installCandidate = (root: string) =>
   run(
     "npm",
     [
@@ -94,8 +97,17 @@ const temporaryRoot = await mkdtemp(
 );
 
 try {
-  const results = {};
-  for (const target of ["supabase", "postgresql"]) {
+  const results: Partial<
+    Record<
+      Target,
+      {
+        configCreated: boolean;
+        existingIgnoreEntryPreserved: boolean;
+        initRecognizedExistingConfig: boolean;
+      }
+    >
+  > = {};
+  for (const target of ["supabase", "postgresql"] as const) {
     const root = join(temporaryRoot, target);
     await createConsumer(root, target);
     installCandidate(root);
@@ -107,12 +119,18 @@ try {
     assert.match(ignore, /keep-this-entry\//u);
     assert.match(ignore, /\.rehearsal\//u);
 
-    const init = JSON.parse(
-      run(join(root, "node_modules/.bin/rehearsal"), ["init", "--json"], {
-        cwd: root,
-      }),
+    const init = requireObject(
+      JSON.parse(
+        run(join(root, "node_modules/.bin/rehearsal"), ["init", "--json"], {
+          cwd: root,
+        }),
+      ),
+      "Init response",
     );
-    assert.equal(init.data.mode, "current-template");
+    assert.equal(
+      requireObject(init.data, "Init data").mode,
+      "current-template",
+    );
 
     if (target === "supabase") {
       const runtimeConfig = join(
@@ -120,16 +138,25 @@ try {
         "infrastructure/rehearsal/supabase/config.toml",
       );
       await rm(runtimeConfig);
-      const recovery = JSON.parse(
-        run(
-          join(root, "node_modules/.bin/rehearsal"),
-          ["setup", "--write", "--json"],
-          { cwd: root },
+      const recovery = requireObject(
+        JSON.parse(
+          run(
+            join(root, "node_modules/.bin/rehearsal"),
+            ["setup", "--write", "--json"],
+            { cwd: root },
+          ),
         ),
+        "Setup response",
       );
+      const files = requireArray(
+        requireObject(recovery.data, "Setup data").files,
+        "Setup files",
+      ).map((value) => requireObject(value, "Setup file"));
       assert.equal(
-        recovery.data.files.find(({ path }) => path.endsWith("config.toml"))
-          ?.action,
+        files.find(
+          ({ path }) =>
+            typeof path === "string" && path.endsWith("config.toml"),
+        )?.action,
         "create",
       );
       assert.equal(await readFile(configPath, "utf8"), config);

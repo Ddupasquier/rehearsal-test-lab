@@ -1,12 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { requireObject } from "./shared/validation.mts";
 
 const root = resolve(import.meta.dirname, "..");
 const project = resolve(root, "projects/supabase");
 const container = "supabase_db_rehearsal-test-lab-supabase-rehearsal";
 
-const parseEnvironment = (contents) =>
+const parseEnvironment = (contents: string): Record<string, string> =>
   Object.fromEntries(
     contents
       .split("\n")
@@ -26,7 +27,7 @@ const parseEnvironment = (contents) =>
       }),
   );
 
-const sql = (statement) => {
+const sql = (statement: string) => {
   const result = spawnSync(
     "docker",
     [
@@ -49,8 +50,9 @@ const sql = (statement) => {
   return result.stdout.trim();
 };
 
-const state = JSON.parse(
-  sql(`
+const state = requireObject(
+  JSON.parse(
+    sql(`
     select json_build_object(
       'accounts', (select count(*) from lab_api.accounts),
       'projects', (select count(*) from lab_api.projects),
@@ -76,6 +78,8 @@ const state = JSON.parse(
       'avatarPath', (select avatar_path from lab_api.accounts)
     );
   `),
+  ),
+  "Supabase target state",
 );
 
 const expected = {

@@ -1,3 +1,4 @@
+import { requireObject } from "../../scripts/shared/validation.mts";
 import { spawnSync } from "node:child_process";
 
 const container = "rehearsal-test-lab-postgresql";
@@ -36,7 +37,10 @@ const result = spawnSync(
 if (result.status !== 0)
   throw new Error(result.stderr || "PostgreSQL check failed.");
 
-const actual = JSON.parse(result.stdout.trim());
+const actual = requireObject(
+  JSON.parse(result.stdout.trim()),
+  "PostgreSQL source counts",
+);
 const expected = {
   accounts: 2,
   entries: 10003,

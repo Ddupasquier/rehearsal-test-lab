@@ -1,13 +1,55 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { CommandError } from "./process.mts";
+import { errorMessage } from "../shared/validation.mts";
+import type { JsonObject } from "../shared/validation.mts";
 
-const duration = (milliseconds) => `${(milliseconds / 1000).toFixed(1)}s`;
+export interface Artifact {
+  sha256: string;
+  name?: string;
+  version?: string;
+}
 
-export function createReporter({ artifactPath, reportDirectory }) {
+export interface TeardownResult {
+  name: string;
+  status: "passed" | "failed";
+  error?: string;
+}
+
+interface Stage {
+  name: string;
+  status: "passed" | "failed" | "skipped";
+  durationMs: number;
+  details?: JsonObject;
+  error?: string;
+  command?: string;
+  exitCode?: number | null;
+}
+
+interface ReportInput {
+  artifact: Artifact;
+  plannedStages: readonly string[];
+  teardown: TeardownResult[];
+  failure: unknown;
+}
+
+const duration = (milliseconds: number) =>
+  `${(milliseconds / 1000).toFixed(1)}s`;
+
+export function createReporter({
+  artifactPath,
+  reportDirectory,
+}: {
+  artifactPath: string;
+  reportDirectory: string;
+}) {
   const startedAt = new Date();
-  const stages = [];
+  const stages: Stage[] = [];
 
-  const runStage = async (name, operation) => {
+  const runStage = async (
+    name: string,
+    operation: () => JsonObject | Promise<JsonObject>,
+  ) => {
     const started = performance.now();
     process.stdout.write(`\n→ ${name}\n`);
     try {
@@ -22,9 +64,10 @@ export function createReporter({ artifactPath, reportDirectory }) {
         name,
         status: "failed",
         durationMs,
-        error: String(error?.message ?? error),
-        command: error?.command,
-        exitCode: error?.exitCode,
+        error: errorMessage(error),
+        ...(error instanceof CommandError
+          ? { command: error.command, exitCode: error.exitCode }
+          : {}),
       });
       process.stdout.write(`✗ ${name} (${duration(durationMs)})\n`);
       throw error;
@@ -36,7 +79,7 @@ export function createReporter({ artifactPath, reportDirectory }) {
     plannedStages,
     teardown,
     failure,
-  }) => {
+  }: ReportInput) => {
     const completedNames = new Set(stages.map(({ name }) => name));
     for (const name of plannedStages) {
       if (!completedNames.has(name)) {
@@ -63,7 +106,7 @@ export function createReporter({ artifactPath, reportDirectory }) {
       artifact: { path: artifactPath, ...artifact },
       stages,
       teardown,
-      failure: failure ? String(failure?.message ?? failure) : null,
+      failure: failure ? errorMessage(failure) : null,
     };
 
     await mkdir(reportDirectory, { recursive: true });
@@ -86,7 +129,7 @@ export function createReporter({ artifactPath, reportDirectory }) {
       .filter(({ details }) => details?.candidateCount)
       .map(
         ({ name, details }) =>
-          `- ${name.replace("Exercise ", "").replace(" target and application", "")}: \`${details.candidate}\` (digest \`${details.candidateSha256}\`)`,
+          `- ${name.replace("Exercise ", "").replace(" target and application", "")}: \`${details?.candidate}\` (digest \`${details?.candidateSha256}\`)`,
       );
     await writeFile(
       markdownPath,
@@ -108,9 +151,7 @@ export function createReporter({ artifactPath, reportDirectory }) {
         "## Teardown",
         "",
         teardownRows || "- No temporary resources were created.",
-        ...(failure
-          ? ["", "## Failure", "", String(failure?.message ?? failure)]
-          : []),
+        ...(failure ? ["", "## Failure", "", errorMessage(failure)] : []),
         "",
       ].join("\n"),
     );

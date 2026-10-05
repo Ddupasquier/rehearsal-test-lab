@@ -11,6 +11,13 @@ represented faithfully by these synthetic consumers.
 
 ## 0. Verify onboarding from the exact artifact
 
+Install the TypeScript tooling and run the fast checks from the repository root first:
+
+```bash
+npm ci --ignore-scripts
+npm run check
+```
+
 For normal candidate acceptance, run the complete automated workflow from the lab root:
 
 ```bash

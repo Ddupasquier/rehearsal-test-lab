@@ -4,6 +4,9 @@ This project uses an isolated local Supabase runtime as its synthetic source and
 separate local runtime as the disposable Rehearsal target. It has no hosted project and
 no recurring Supabase compute cost.
 
+Run `npm ci --ignore-scripts` from the repository root once to install the shared
+TypeScript tooling before using this consumer.
+
 ## Local schema check
 
 From the repository root:

@@ -1,4 +1,8 @@
 import { spawnSync } from "node:child_process";
+import type {
+  SpawnSyncOptionsWithStringEncoding,
+  SpawnSyncReturns,
+} from "node:child_process";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -14,11 +18,16 @@ const seed = resolve(
   "../projects/postgresql/database/seed.sql",
 );
 
-function docker(args, options = {}) {
-  return spawnSync("docker", args, { encoding: "utf8", ...options });
+function docker(
+  args: string[],
+  options: Omit<SpawnSyncOptionsWithStringEncoding, "encoding"> = {},
+) {
+  const result = spawnSync("docker", args, { encoding: "utf8", ...options });
+  if (result.error) throw result.error;
+  return result;
 }
 
-function requireSuccess(result, message) {
+function requireSuccess(result: SpawnSyncReturns<string>, message: string) {
   if (result.status !== 0) throw new Error(result.stderr || message);
 }
 
@@ -113,13 +122,29 @@ if (action === "start") {
 } else if (action === "stop") {
   const existing = docker(["container", "inspect", container]);
   if (existing.status !== 0) {
+    if (!/No such (?:container|object)/iu.test(existing.stderr)) {
+      requireSuccess(existing, "Could not inspect the PostgreSQL container.");
+    }
     console.log("Ordinary PostgreSQL is already absent.");
   } else {
+    const owner = docker([
+      "container",
+      "inspect",
+      "--format",
+      '{{ index .Config.Labels "com.rehearsal-test-lab.resource" }}',
+      container,
+    ]);
+    requireSuccess(owner, "Could not inspect PostgreSQL container ownership.");
+    if (owner.stdout.trim() !== "postgresql") {
+      throw new Error(`Refusing to stop unowned container ${container}.`);
+    }
     requireSuccess(docker(["stop", container]), "Could not stop PostgreSQL.");
     console.log(
       "Ordinary PostgreSQL stopped; its lab-owned volume was preserved.",
     );
   }
 } else {
-  throw new Error("Usage: node scripts/postgresql-runtime.mjs <start|stop>");
+  throw new Error(
+    "Usage: node --import tsx scripts/postgresql-runtime.mts <start|stop>",
+  );
 }

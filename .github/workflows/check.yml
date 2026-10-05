@@ -20,6 +20,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
+      - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm run candidate:verify -- --help
 
@@ -30,6 +31,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+      - run: npm ci --ignore-scripts
       - run: npm run postgresql:start
       - run: npm run postgresql:verify
       - if: always()
@@ -45,6 +47,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+      - run: npm ci --ignore-scripts
       - name: Verify the currently published beta
         run: |
           tarball="$(npm pack @rehearsal-db/core@beta --silent --pack-destination "$RUNNER_TEMP")"

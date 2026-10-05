@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { localSupabaseEnvironment } from "../../../scripts/local-supabase.mjs";
+import { localSupabaseEnvironment } from "../../../scripts/local-supabase.mts";
 
 const source = localSupabaseEnvironment();
 const administratorUrl = new URL(source.DB_URL);

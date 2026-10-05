@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { runCommand } from "./process.mjs";
+import { runCommand } from "./process.mts";
+import {
+  errorMessage,
+  requireArray,
+  requireObject,
+  requireString,
+} from "../shared/validation.mts";
+
+type ResourceType = "container" | "network" | "volume";
 
 export function createDockerSentinel() {
   const suffix = randomUUID().slice(0, 8);
@@ -9,7 +17,7 @@ export function createDockerSentinel() {
     volume: `rehearsal-lab-sentinel-${suffix}`,
   };
   const label = `com.rehearsal-test-lab.sentinel=${suffix}`;
-  const created = [];
+  const created: string[][] = [];
   let identities;
   try {
     runCommand("docker", [
@@ -56,7 +64,7 @@ export function createDockerSentinel() {
     names,
     identities,
     verify() {
-      for (const type of ["container", "network", "volume"]) {
+      for (const type of ["container", "network", "volume"] as const) {
         if (inspect(type, names[type]) !== identities[type]) {
           throw new Error(`Unrelated Docker ${type} ${names[type]} changed.`);
         }
@@ -65,15 +73,16 @@ export function createDockerSentinel() {
     },
     remove() {
       const failures = [];
-      for (const [type, args] of [
+      const operations: [ResourceType, string[]][] = [
         ["container", ["rm", names.container]],
         ["network", ["network", "rm", names.network]],
         ["volume", ["volume", "rm", names.volume]],
-      ]) {
+      ];
+      for (const [type, args] of operations) {
         try {
           runCommand("docker", args);
         } catch (error) {
-          failures.push(`${type}: ${error.message}`);
+          failures.push(`${type}: ${errorMessage(error)}`);
         }
       }
       if (failures.length) throw new Error(failures.join("\n"));
@@ -81,12 +90,17 @@ export function createDockerSentinel() {
   };
 }
 
-function inspect(type, name) {
+function inspect(type: ResourceType, name: string) {
   const noun = type === "container" ? "container" : type;
   const { stdout } = runCommand("docker", [noun, "inspect", name]);
-  const [details] = JSON.parse(stdout);
+  const details = requireObject(
+    requireArray(JSON.parse(stdout), "Docker inspection")[0],
+    "Docker resource",
+  );
   const id =
-    type === "volume" ? `${details.Name}:${details.Mountpoint}` : details.Id;
+    type === "volume"
+      ? `${requireString(details.Name, "Volume name")}:${requireString(details.Mountpoint, "Volume mountpoint")}`
+      : requireString(details.Id, "Resource ID");
   if (!id) throw new Error(`Docker did not return an ID for ${type} ${name}.`);
   return id;
 }

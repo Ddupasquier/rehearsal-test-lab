@@ -29,7 +29,7 @@ export default defineRehearsalConfig({
   },
 
   // Source refresh is limited to this local, synthetic fixture.
-  // Credentials come from scripts/with-local-source.mjs and stay untracked.
+  // Credentials come from scripts/with-local-source.mts and stay untracked.
   preparation: {
     sourcePolicy: "infrastructure/rehearsal/source-access-policy.json",
     privacyKey: ".rehearsal/secrets/privacy.key",

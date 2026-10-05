@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { localSupabaseEnvironment, root } from "./local-supabase.mjs";
+import { localSupabaseEnvironment, root } from "./local-supabase.mts";
 
 const { API_URL: apiUrl, SERVICE_ROLE_KEY: serviceRoleKey } =
   localSupabaseEnvironment();

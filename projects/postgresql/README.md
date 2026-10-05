@@ -4,6 +4,9 @@ This project is both a synthetic PostgreSQL source and an ordinary Rehearsal con
 It proves the complete copy, sanitize, restore, application, and reset lifecycle without
 Supabase services or metadata.
 
+Run `npm ci --ignore-scripts` from the repository root once to install the shared
+TypeScript tooling before using this consumer.
+
 ```bash
 npm run postgresql:start
 npm run postgresql:verify

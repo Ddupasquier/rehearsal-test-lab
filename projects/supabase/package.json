@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:rehearsal": "node app/server.mjs",
+    "dev:rehearsal": "node --import tsx app/server.mts",
     "test": "npm run test:rehearsal",
-    "test:rehearsal": "node app/proof.mjs",
-    "source:local": "node scripts/with-local-source.mjs",
+    "test:rehearsal": "node --import tsx app/proof.mts",
+    "source:local": "node --import tsx scripts/with-local-source.mts",
     "rehearsal": "rehearsal"
   },
   "devDependencies": {

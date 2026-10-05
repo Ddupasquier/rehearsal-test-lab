@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
+import { requireObject } from "./shared/validation.mts";
 import { resolve } from "node:path";
 import {
   localSupabaseEnvironment,
   root,
   runLabSql,
-} from "./local-supabase.mjs";
+} from "./local-supabase.mts";
 
 const summary = runLabSql(`
   select json_build_object(
@@ -25,7 +26,7 @@ const summary = runLabSql(`
     )
   );
 `);
-const counts = JSON.parse(summary);
+const counts = requireObject(JSON.parse(summary), "Supabase source counts");
 const expected = {
   accounts: 2,
   entries: 10003,

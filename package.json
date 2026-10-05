@@ -4,23 +4,33 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node scripts/check-layout.mjs",
-    "candidate:verify": "node scripts/verify-candidate.mjs",
-    "onboarding:verify": "node scripts/verify-onboarding.mjs",
+    "check": "npm run typecheck && npm run check:layout && npm test",
+    "candidate:verify": "node --import tsx scripts/verify-candidate.mts",
+    "onboarding:verify": "node --import tsx scripts/verify-onboarding.mts",
     "supabase:start": "supabase start --workdir projects/supabase",
     "supabase:stop": "supabase stop --workdir projects/supabase",
     "supabase:reset": "supabase db reset --workdir projects/supabase",
-    "supabase:assets": "node scripts/seed-supabase-assets.mjs",
-    "supabase:verify": "node scripts/verify-supabase.mjs",
-    "rehearsal:verify-target": "node scripts/verify-rehearsal-target.mjs",
-    "postgresql:start": "node scripts/ensure-postgresql-volume.mjs && docker compose -f projects/postgresql/compose.yaml up -d --wait",
-    "postgresql:verify": "node projects/postgresql/verify.mjs",
+    "supabase:assets": "node --import tsx scripts/seed-supabase-assets.mts",
+    "supabase:verify": "node --import tsx scripts/verify-supabase.mts",
+    "rehearsal:verify-target": "node --import tsx scripts/verify-rehearsal-target.mts",
+    "postgresql:start": "node --import tsx scripts/ensure-postgresql-volume.mts && docker compose -f projects/postgresql/compose.yaml up -d --wait",
+    "postgresql:verify": "node --import tsx projects/postgresql/verify.mts",
     "postgresql:verify-target": "npm --prefix projects/postgresql run verify:target",
     "postgresql:stop": "docker compose -f projects/postgresql/compose.yaml stop",
-    "postgresql:fallback:start": "node scripts/postgresql-runtime.mjs start",
-    "postgresql:fallback:stop": "node scripts/postgresql-runtime.mjs stop"
+    "postgresql:fallback:start": "node --import tsx scripts/postgresql-runtime.mts start",
+    "postgresql:fallback:stop": "node --import tsx scripts/postgresql-runtime.mts stop",
+    "check:layout": "node --import tsx scripts/check-layout.mts",
+    "typecheck": "tsc --project tsconfig.json",
+    "test": "node --import tsx --test tests/*.test.mts"
   },
   "engines": {
     "node": ">=22 <27"
+  },
+  "devDependencies": {
+    "@rehearsal-db/core": "0.1.0-beta.13",
+    "@types/node": "22.20.5",
+    "@types/pg": "^8.16.0",
+    "tsx": "^4.20.0",
+    "typescript": "7.0.2"
   }
 }

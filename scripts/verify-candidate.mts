@@ -2,16 +2,30 @@ import assert from "node:assert/strict";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
-import { createCandidateConfiguration } from "./candidate/application-config.mjs";
-import { createDockerSentinel } from "./candidate/docker-sentinel.mjs";
+import { createCandidateConfiguration } from "./candidate/application-config.mts";
+import { createDockerSentinel } from "./candidate/docker-sentinel.mts";
 import {
   compareInstalledPackage,
   parseJsonOutput,
   requireRegularFile,
   runCommand,
   sha256File,
-} from "./candidate/process.mjs";
-import { createReporter } from "./candidate/report.mjs";
+} from "./candidate/process.mts";
+import { createReporter } from "./candidate/report.mts";
+import type { Artifact, TeardownResult } from "./candidate/report.mts";
+import type { CommandResult } from "./candidate/process.mts";
+import {
+  errorMessage,
+  requireArray,
+  requireNumber,
+  requireObject,
+  requireString,
+} from "./shared/validation.mts";
+
+type Target = "postgresql" | "supabase";
+type CandidateConfiguration = Awaited<
+  ReturnType<typeof createCandidateConfiguration>
+>;
 
 const root = resolve(import.meta.dirname, "..");
 const requestedTarball = process.argv[2];
@@ -50,8 +64,8 @@ const projects = {
   postgresql: resolve(root, "projects/postgresql"),
   supabase: resolve(root, "projects/supabase"),
 };
-const candidateConfigurations = new Map();
-const temporaryMigrationPaths = new Set();
+const candidateConfigurations = new Map<string, CandidateConfiguration>();
+const temporaryMigrationPaths = new Set<string>();
 const plannedStages = [
   "Inspect exact artifact",
   "Verify fresh onboarding",
@@ -66,15 +80,25 @@ const plannedStages = [
   "Exercise Supabase target and application",
   "Clean Supabase runtime safely",
   "Prove unrelated Docker resources survived",
-];
+] as const;
 
-let artifact = { sha256: artifactSha256 };
-let sentinel;
-let extractedDirectory;
-let failure;
-const teardown = [];
+let artifact: Artifact = { sha256: artifactSha256 };
+let sentinel: ReturnType<typeof createDockerSentinel> | undefined;
+let extractedDirectory: string | undefined;
+let failure: unknown;
+const teardown: TeardownResult[] = [];
 
-const cli = (project, args, environment = {}) => {
+const configureCandidate = async (project: string) => {
+  const configuration = await createCandidateConfiguration(project);
+  candidateConfigurations.set(project, configuration);
+  return configuration;
+};
+
+const cli = (
+  project: string,
+  args: string[],
+  environment: NodeJS.ProcessEnv = {},
+) => {
   const command = resolve(project, "node_modules/.bin/rehearsal");
   const configuration = candidateConfigurations.get(project);
   return runCommand(
@@ -91,13 +115,15 @@ const cli = (project, args, environment = {}) => {
   );
 };
 
-const sourceCli = (target, args) => {
+const sourceCli = (target: Target, args: string[]) => {
   const project = projects[target];
   const configuration = candidateConfigurations.get(project);
   return runCommand(
     "node",
     [
-      "scripts/with-local-source.mjs",
+      "--import",
+      "tsx",
+      "scripts/with-local-source.mts",
       ...args,
       ...(configuration ? [`--config=${configuration.relativePath}`] : []),
       "--json",
@@ -106,9 +132,21 @@ const sourceCli = (target, args) => {
   );
 };
 
-const json = (result, label) => parseJsonOutput(result.stdout, label);
+const json = (result: CommandResult, label: string) => {
+  const envelope = parseJsonOutput(result.stdout, label);
+  return {
+    status: requireString(envelope.status, `${label} status`),
+    data: requireObject(envelope.data, `${label} data`),
+  };
+};
 
-const installCandidate = async (project, extractedPackage) => {
+const planDigest = (data: Record<string, unknown>) =>
+  requireString(
+    requireObject(data.plan, "Confirmation plan").digest,
+    "Confirmation digest",
+  );
+
+const installCandidate = async (project: string, extractedPackage: string) => {
   await rm(resolve(project, "node_modules/@rehearsal-db/core"), {
     recursive: true,
     force: true,
@@ -128,15 +166,16 @@ const installCandidate = async (project, extractedPackage) => {
   );
   const installed = resolve(project, "node_modules/@rehearsal-db/core");
   const fileCount = await compareInstalledPackage(extractedPackage, installed);
-  const metadata = JSON.parse(
-    await readFile(resolve(installed, "package.json"), "utf8"),
+  const metadata = requireObject(
+    JSON.parse(await readFile(resolve(installed, "package.json"), "utf8")),
+    "Installed package metadata",
   );
   assert.equal(metadata.name, "@rehearsal-db/core");
   assert.equal(metadata.version, artifact.version);
   return { project, fileCount, version: metadata.version };
 };
 
-const ensurePrivacyKey = async (project) => {
+const ensurePrivacyKey = async (project: string) => {
   const key = resolve(project, ".rehearsal/secrets/privacy.key");
   try {
     await access(key);
@@ -146,7 +185,7 @@ const ensurePrivacyKey = async (project) => {
   }
 };
 
-const retireExistingSourceAccess = async (target) => {
+const retireExistingSourceAccess = async (target: Target) => {
   const receipt = resolve(
     projects[target],
     ".rehearsal/source-access-receipt.json",
@@ -163,11 +202,11 @@ const retireExistingSourceAccess = async (target) => {
   sourceCli(target, [
     "source",
     "retire",
-    `--confirm-source-retirement=${preview.data.plan.digest}`,
+    `--confirm-source-retirement=${planDigest(preview.data)}`,
   ]);
 };
 
-const refreshBaseline = async (target) => {
+const refreshBaseline = async (target: Target) => {
   const project = projects[target];
   await ensurePrivacyKey(project);
   await retireExistingSourceAccess(target);
@@ -178,7 +217,7 @@ const refreshBaseline = async (target) => {
   sourceCli(target, [
     "source",
     "apply",
-    `--confirm-source-access=${accessPlan.data.digest}`,
+    `--confirm-source-access=${requireString(accessPlan.data.digest, "Source access digest")}`,
   ]);
   try {
     const refreshed = json(
@@ -192,12 +231,21 @@ const refreshBaseline = async (target) => {
     sourceCli(target, [
       "source",
       "retire",
-      `--confirm-source-retirement=${retirement.data.plan.digest}`,
+      `--confirm-source-retirement=${planDigest(retirement.data)}`,
     ]);
+    const manifest = requireObject(
+      refreshed.data.manifest,
+      "Baseline manifest",
+    );
     return {
-      generationId: refreshed.data.generationId,
-      rows: refreshed.data.manifest.rowCount,
-      tables: Object.keys(refreshed.data.manifest.tableCounts).length,
+      generationId: requireString(
+        refreshed.data.generationId,
+        "Baseline generation",
+      ),
+      rows: requireNumber(manifest.rowCount, "Baseline row count"),
+      tables: Object.keys(
+        requireObject(manifest.tableCounts, "Baseline table counts"),
+      ).length,
     };
   } catch (error) {
     await retireExistingSourceAccess(target).catch(() => undefined);
@@ -205,7 +253,7 @@ const refreshBaseline = async (target) => {
   }
 };
 
-const createCandidateMigration = async (target) => {
+const createCandidateMigration = async (target: Target) => {
   const directory =
     target === "supabase"
       ? resolve(projects[target], "supabase/migrations")
@@ -222,15 +270,23 @@ const createCandidateMigration = async (target) => {
   return path;
 };
 
-const exerciseTarget = (target, independentVerification) => {
+const exerciseTarget = (
+  target: Target,
+  independentVerification: { command: string; args: string[]; cwd: string },
+) => {
   const project = projects[target];
   const doctor = json(cli(project, ["doctor"]), `${target} doctor`);
   assert.equal(doctor.data.state, "READY");
   const candidates = json(cli(project, ["candidates"]), `${target} candidates`);
   assert.equal(candidates.data.candidateCount, 1);
-  assert.equal(candidates.data.candidates.length, 1);
+  const candidateList = requireArray(
+    candidates.data.candidates,
+    "Migration candidates",
+  );
+  assert.equal(candidateList.length, 1);
+  const candidate = requireObject(candidateList[0], "Migration candidate");
   assert.equal(
-    candidates.data.candidates[0].filename,
+    candidate.filename,
     "20261005000100_rehearsal_candidate_probe.sql",
   );
   cli(project, ["reset"]);
@@ -240,22 +296,22 @@ const exerciseTarget = (target, independentVerification) => {
   const run = json(
     cli(project, [
       "run",
-      `--confirm-candidates=${candidates.data.candidateSha256}`,
+      `--confirm-candidates=${requireString(candidates.data.candidateSha256, "Candidate digest")}`,
     ]),
     `${target} run`,
   );
   const verified = json(cli(project, ["verify"]), `${target} verify`);
   return {
-    doctorChecks: doctor.data.checks.length,
+    doctorChecks: requireArray(doctor.data.checks, "Doctor checks").length,
     candidateCount: candidates.data.candidateCount,
     candidateSha256: candidates.data.candidateSha256,
-    candidate: candidates.data.candidates[0].filename,
+    candidate: requireString(candidate.filename, "Candidate filename"),
     runStatus: run.status,
     verifyStatus: verified.status,
   };
 };
 
-const cleanupTarget = (target) => {
+const cleanupTarget = (target: Target, requireRuntimeRemoval = true) => {
   const project = projects[target];
   const preview = json(
     cli(project, ["cleanup", "--include-runtime"]),
@@ -266,15 +322,20 @@ const cleanupTarget = (target) => {
       "cleanup",
       "--include-runtime",
       "--write",
-      `--confirm-cleanup=${preview.data.plan.digest}`,
+      `--confirm-cleanup=${planDigest(preview.data)}`,
     ]),
     `${target} cleanup`,
   );
-  assert.equal(applied.data.applied.runtimeRemoved, true);
+  const runtimeRemoved = requireObject(
+    applied.data.applied,
+    "Cleanup result",
+  ).runtimeRemoved;
+  assert.equal(typeof runtimeRemoved, "boolean");
+  if (requireRuntimeRemoval) assert.equal(runtimeRemoved, true);
   sentinel?.verify();
   return {
-    digest: preview.data.plan.digest,
-    runtimeRemoved: applied.data.applied.runtimeRemoved,
+    digest: planDigest(preview.data),
+    runtimeRemoved,
     unrelatedDockerResourcesPreserved: true,
   };
 };
@@ -290,7 +351,7 @@ const startSupabaseSource = () => {
         previousFailures: failures,
       };
     } catch (error) {
-      failures.push(String(error.message));
+      failures.push(errorMessage(error));
       if (attempt === 2) throw error;
       runCommand("npm", ["run", "supabase:stop"], { cwd: root });
     }
@@ -312,7 +373,7 @@ try {
     if (
       entries.length === 0 ||
       verboseEntries.length !== entries.length ||
-      verboseEntries.some((entry) => !["-", "d"].includes(entry[0])) ||
+      verboseEntries.some((entry) => !["-", "d"].includes(entry.charAt(0))) ||
       entries.some(
         (entry) =>
           !entry.startsWith("package/") ||
@@ -324,23 +385,27 @@ try {
     }
     runCommand("tar", ["-xzf", tarball, "-C", extractedDirectory]);
     const extractedPackage = resolve(extractedDirectory, "package");
-    const metadata = JSON.parse(
-      await readFile(resolve(extractedPackage, "package.json"), "utf8"),
+    const metadata = requireObject(
+      JSON.parse(
+        await readFile(resolve(extractedPackage, "package.json"), "utf8"),
+      ),
+      "Candidate metadata",
     );
     assert.equal(metadata.name, "@rehearsal-db/core");
-    assert.match(metadata.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u);
+    const version = requireString(metadata.version, "Candidate version");
+    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u);
     artifact = {
       sha256: artifactSha256,
-      name: metadata.name,
-      version: metadata.version,
+      name: "@rehearsal-db/core",
+      version,
     };
-    return artifact;
+    return { ...artifact };
   });
 
   await runStage(plannedStages[1], async () => {
     const result = runCommand(
       "node",
-      ["scripts/verify-onboarding.mjs", tarball],
+      ["--import", "tsx", "scripts/verify-onboarding.mts", tarball],
       {
         cwd: root,
       },
@@ -355,15 +420,17 @@ try {
   });
 
   await runStage(plannedStages[2], async () => {
-    const extractedPackage = resolve(extractedDirectory, "package");
+    const extractedPackage = resolve(
+      requireString(extractedDirectory, "Extracted package directory"),
+      "package",
+    );
     const installed = {
       postgresql: await installCandidate(projects.postgresql, extractedPackage),
       supabase: await installCandidate(projects.supabase, extractedPackage),
     };
     const applicationPorts = {
-      postgresql: (await createCandidateConfiguration(projects.postgresql))
-        .port,
-      supabase: (await createCandidateConfiguration(projects.supabase)).port,
+      postgresql: (await configureCandidate(projects.postgresql)).port,
+      supabase: (await configureCandidate(projects.supabase)).port,
     };
     return { ...installed, applicationPorts };
   });
@@ -424,28 +491,31 @@ try {
   });
 
   await runStage(plannedStages[11], () => cleanupTarget("supabase"));
-  await runStage(plannedStages[12], () => sentinel.verify());
+  await runStage(plannedStages[12], () => {
+    if (!sentinel) throw new Error("Docker sentinel was not created.");
+    return sentinel.verify();
+  });
 } catch (error) {
   failure = error;
 } finally {
-  const teardownOperations = [
+  const teardownOperations: [string, () => unknown | Promise<unknown>][] = [
     ...(failure
-      ? [
+      ? ([
           [
             "Clean PostgreSQL target after failure",
             () =>
               candidateConfigurations.has(projects.postgresql)
-                ? cleanupTarget("postgresql")
+                ? cleanupTarget("postgresql", false)
                 : undefined,
           ],
           [
             "Clean Supabase target after failure",
             () =>
               candidateConfigurations.has(projects.supabase)
-                ? cleanupTarget("supabase")
+                ? cleanupTarget("supabase", false)
                 : undefined,
           ],
-        ]
+        ] satisfies [string, () => unknown | Promise<unknown>][])
       : []),
     [
       "Retire PostgreSQL source access",
@@ -499,7 +569,7 @@ try {
       teardown.push({
         name,
         status: "failed",
-        error: String(error?.message ?? error),
+        error: errorMessage(error),
       });
       failure ??= error;
     }

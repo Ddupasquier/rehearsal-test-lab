@@ -16,14 +16,20 @@ const server = createServer(async (request, response) => {
   const client = new Client({ connectionString: databaseUrl });
   try {
     await client.connect();
-    const result = await client.query(`
+    const result = await client.query<{
+      accounts: number;
+      entries: number;
+      documents: number;
+    }>(`
       select
         (select count(*)::integer from lab_api.accounts) as accounts,
         (select count(*)::integer from lab_api.entries) as entries,
         (select count(*)::integer from publication.documents) as documents
     `);
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ ok: true, ...result.rows[0] }));
+    const summary = result.rows[0];
+    if (!summary) throw new Error("Lab summary query returned no rows.");
+    response.end(JSON.stringify({ ok: true, ...summary }));
   } catch (error) {
     response.writeHead(503).end(JSON.stringify({ ok: false }));
     console.error(error instanceof Error ? error.message : error);

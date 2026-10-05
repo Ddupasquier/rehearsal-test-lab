@@ -5,15 +5,18 @@ const root = resolve(import.meta.dirname, "..");
 const requiredFiles = [
   "README.md",
   ".github/workflows/check.yml",
+  "tsconfig.json",
+  "package-lock.json",
   "docs/architecture.md",
   "docs/runbook.md",
   "docs/safety.md",
-  "scripts/verify-onboarding.mjs",
-  "scripts/verify-candidate.mjs",
-  "scripts/candidate/application-config.mjs",
-  "scripts/candidate/docker-sentinel.mjs",
-  "scripts/candidate/process.mjs",
-  "scripts/candidate/report.mjs",
+  "scripts/verify-onboarding.mts",
+  "scripts/verify-candidate.mts",
+  "scripts/candidate/application-config.mts",
+  "scripts/candidate/docker-sentinel.mts",
+  "scripts/candidate/process.mts",
+  "scripts/candidate/report.mts",
+  "scripts/shared/validation.mts",
   "projects/supabase/package.json",
   "projects/supabase/supabase/config.toml",
   "projects/supabase/supabase/seed.sql",
@@ -23,7 +26,7 @@ const requiredFiles = [
   "projects/postgresql/rehearsal.config.mjs",
   "projects/postgresql/infrastructure/rehearsal/source-access-policy.json",
   "projects/postgresql/infrastructure/rehearsal/sanitization-policy.json",
-  "projects/postgresql/scripts/verify-rehearsal-target.mjs",
+  "projects/postgresql/scripts/verify-rehearsal-target.mts",
 ];
 
 await Promise.all(requiredFiles.map((file) => access(resolve(root, file))));
