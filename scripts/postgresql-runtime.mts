@@ -89,7 +89,7 @@ if (action === "start") {
         "--volume",
         `${seed}:/docker-entrypoint-initdb.d/020_seed.sql:ro`,
         "--health-cmd",
-        "pg_isready -U rehearsal_lab -d rehearsal_lab",
+        "pg_isready -h 127.0.0.1 -U rehearsal_lab -d rehearsal_lab",
         "--health-interval",
         "2s",
         "--health-timeout",
