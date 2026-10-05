@@ -11,7 +11,20 @@ represented faithfully by these synthetic consumers.
 
 ## 0. Verify onboarding from the exact artifact
 
-Run this from the lab root before either database lifecycle:
+For normal candidate acceptance, run the complete automated workflow from the lab root:
+
+```bash
+npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
+```
+
+The command creates and applies one temporary, exact-digest migration in each database. It
+fails if any required check is skipped or inconclusive. Its Markdown and JSON reports
+appear under `test-results/candidate-acceptance/`. Review the report before asking a
+downstream application such as BlendCalc to perform focused consumer-only checks.
+
+The remaining steps document the same lifecycle for investigation and manual testing.
+To check onboarding by itself, run this from the lab root before either database
+lifecycle:
 
 ```bash
 shasum -a 256 /absolute/path/to/rehearsal-db-core-*.tgz
