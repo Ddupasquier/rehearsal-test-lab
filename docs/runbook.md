@@ -9,6 +9,19 @@ removed and that removal passes, also complete its focused retirement acceptance
 that milestone, use BlendCalc or another downstream app only for behavior that cannot be
 represented faithfully by these synthetic consumers.
 
+## 0. Verify onboarding from the exact artifact
+
+Run this from the lab root before either database lifecycle:
+
+```bash
+shasum -a 256 /absolute/path/to/rehearsal-db-core-*.tgz
+npm run onboarding:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
+```
+
+The check installs the artifact normally in fresh temporary Supabase and PostgreSQL
+projects, so the package-owned install hook is exercised. It also verifies non-destructive
+partial-setup recovery and malformed-config preservation. Record the reported SHA-256.
+
 ## Supabase lifecycle
 
 This workflow uses two local runtimes:

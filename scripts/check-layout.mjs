@@ -7,6 +7,7 @@ const requiredFiles = [
   "docs/architecture.md",
   "docs/runbook.md",
   "docs/safety.md",
+  "scripts/verify-onboarding.mjs",
   "projects/supabase/package.json",
   "projects/supabase/supabase/config.toml",
   "projects/supabase/supabase/seed.sql",
