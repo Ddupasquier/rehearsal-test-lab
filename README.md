@@ -70,6 +70,28 @@ GitHub Actions runs this boundary against the currently published `beta` package
 unpublished candidate must still be supplied locally by exact path and checksum; the lab
 does not download unreviewed artifacts from another repository automatically.
 
+## One-command candidate acceptance
+
+Use the full runner before proposing a Rehearsal release:
+
+```bash
+npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
+```
+
+It verifies the artifact checksum and installed bytes, fresh onboarding, both complete
+database lifecycles, one exact-digest candidate migration per database, application
+proofs, exact-confirmation cleanup, and preservation of unrelated Docker resources. It
+writes a readable Markdown report and a machine-readable JSON report below
+`test-results/candidate-acceptance/`.
+
+The command uses only the lab's local synthetic sources. It stops the lab source services
+when finished and removes its temporary Docker sentinel. Existing database source volumes
+are preserved. The active baseline and configured retained generations remain; older
+eligible generations may be removed according to the checked-in retention setting.
+Disposable Rehearsal targets are removed through the package's own reviewed cleanup
+command. The exact candidate remains installed in both ignored `node_modules` trees for
+follow-up inspection.
+
 ## Non-negotiable safety boundary
 
 - Never point routine tests at BlendCalc or another production database.
