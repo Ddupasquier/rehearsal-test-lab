@@ -17,8 +17,10 @@ import {
 import { errorMessage } from "./shared/validation.mts";
 
 const root = resolve(import.meta.dirname, "..");
-const requested = process.argv[2];
-if (requested === "--help" || requested === "-h") {
+const upgrading = process.argv[2] === "--upgrade";
+const requested = process.argv[upgrading ? 4 : 2];
+const previousRequested = upgrading ? process.argv[3] : undefined;
+if (!upgrading && (requested === "--help" || requested === "-h")) {
   console.log(`Usage: npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
 
 Snapshots the lab and exact artifact into an independent workspace with dedicated
@@ -27,17 +29,27 @@ slot to limit memory use. Reports remain in test-results/candidate-acceptance/.
 Failed workspaces are retained for diagnosis; successful workspaces are removed.`);
   process.exit(0);
 }
-if (!requested || process.argv.length !== 3)
+if (!requested || process.argv.length !== (upgrading ? 5 : 3))
   throw new Error(
     "Pass one exact candidate tarball: npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz",
   );
 const artifact = resolve(process.cwd(), requested);
 await requireRegularFile(artifact, "Candidate artifact");
 const sha256 = await sha256File(artifact);
+const previousPath = previousRequested
+  ? resolve(process.cwd(), previousRequested)
+  : undefined;
+if (previousPath)
+  await requireRegularFile(previousPath, "Previous release artifact");
+const previousSha256 = previousPath
+  ? await sha256File(previousPath)
+  : undefined;
 const runId = `${new Date().toISOString().replaceAll(/[:.]/gu, "-")}-${randomUUID().slice(0, 8)}`;
 const reportDirectory = resolve(
   root,
-  "test-results/candidate-acceptance",
+  upgrading
+    ? "test-results/upgrade-acceptance"
+    : "test-results/candidate-acceptance",
   runId,
 );
 const workspace = resolve(reportDirectory, "workspace");
@@ -62,6 +74,14 @@ try {
   await copyFile(artifact, snapshot);
   if ((await sha256File(snapshot)) !== sha256)
     throw new Error("Candidate artifact changed while being copied.");
+  const previousSnapshot = previousPath
+    ? resolve(reportDirectory, "previous.tgz")
+    : undefined;
+  if (previousPath && previousSnapshot) {
+    await copyFile(previousPath, previousSnapshot);
+    if ((await sha256File(previousSnapshot)) !== previousSha256)
+      throw new Error("Previous artifact changed while being copied.");
+  }
   console.log(
     `Isolated run: ${bindings.prefix}\nWorkspace: ${workspace}\nDedicated ports: ${lease.base}-${lease.base + 31}`,
   );
@@ -81,6 +101,7 @@ try {
           ...process.env,
           LAB_REPORT_DIRECTORY: reportDirectory,
           LAB_RUN_ID: bindings.prefix,
+          LAB_PREVIOUS_ARTIFACT: previousSnapshot ?? "",
           LAB_POSTGRESQL_APP_PORT: String(lease.base + 28),
           LAB_SUPABASE_APP_PORT: String(lease.base + 27),
         },
@@ -145,6 +166,14 @@ try {
         startedAt,
         completedAt: new Date().toISOString(),
         artifact: { originalPath: artifact, sha256 },
+        ...(previousPath
+          ? {
+              previousArtifact: {
+                originalPath: previousPath,
+                sha256: previousSha256,
+              },
+            }
+          : {}),
         workspace,
         snapshotSha256,
         workspaceRetained: !passed,

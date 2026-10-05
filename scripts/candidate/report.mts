@@ -28,6 +28,7 @@ interface Stage {
 }
 
 interface ReportInput {
+  previousArtifact?: Artifact & { path: string };
   artifact: Artifact;
   plannedStages: readonly string[];
   teardown: TeardownResult[];
@@ -80,6 +81,7 @@ export function createReporter({
     plannedStages,
     teardown,
     failure,
+    previousArtifact,
   }: ReportInput) => {
     const completedNames = new Set(stages.map(({ name }) => name));
     for (const name of plannedStages) {
@@ -110,6 +112,7 @@ export function createReporter({
           "Acceptance runner process only; excludes child processes and Docker runtimes.",
       },
       artifact: { path: artifactPath, ...artifact },
+      ...(previousArtifact ? { previousArtifact } : {}),
       stages,
       teardown,
       failure: failure ? errorMessage(failure) : null,
@@ -145,6 +148,11 @@ export function createReporter({
         `**Verdict:** ${report.status.toUpperCase()}`,
         `**Package:** ${artifact.name ?? "unknown"}@${artifact.version ?? "unknown"}`,
         `**SHA-256:** \`${artifact.sha256 ?? "unavailable"}\``,
+        ...(previousArtifact
+          ? [
+              `**Upgrade from:** ${previousArtifact.version} (SHA-256 \`${previousArtifact.sha256}\`)`,
+            ]
+          : []),
         `**Completed:** ${report.completedAt}`,
         "",
         "| Result | Stage | Duration |",

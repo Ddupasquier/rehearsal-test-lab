@@ -213,3 +213,15 @@ npx --no-install rehearsal stop --plain
 
 After the second reset, `lab_api.entries` must contain exactly 10,000 rows. Stopping
 preserves both the immutable baseline and the disposable runtime data.
+
+## Version changes
+
+Also run the isolated upgrade gate with two exact artifacts:
+
+```bash
+npm run upgrade:verify -- /path/to/previous.tgz /path/to/candidate.tgz
+```
+
+Review both verdicts under `test-results/upgrade-acceptance/`. This proves preserved
+configuration and baseline access plus existing runtime data, reset, migrations,
+application behavior, and cleanup in the same upgraded consumer.

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "npm run typecheck && npm run check:layout && npm test",
+    "upgrade:verify": "node --import tsx scripts/verify-upgrade.mts",
     "candidate:verify": "node --import tsx scripts/verify-candidate.mts",
     "onboarding:verify": "node --import tsx scripts/verify-onboarding.mts",
     "supabase:start": "supabase start --workdir projects/supabase",

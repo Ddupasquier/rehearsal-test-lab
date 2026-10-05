@@ -23,6 +23,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm run candidate:verify -- --help
+      - run: npm run upgrade:verify -- --help
 
   postgresql-fixture:
     runs-on: ubuntu-24.04

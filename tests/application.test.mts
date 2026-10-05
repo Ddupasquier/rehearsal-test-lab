@@ -76,9 +76,10 @@ for (const target of ["postgresql", "supabase"] as const) {
         if (child.exitCode === null) child.kill("SIGTERM");
         await closed;
       });
+      const deadline = Date.now() + 30_000;
       for (
         let attempt = 0;
-        !output.includes("ready on") && attempt < 100;
+        !output.includes("ready on") && Date.now() < deadline;
         attempt += 1
       ) {
         if (child.exitCode !== null) assert.fail(output);

@@ -6,16 +6,16 @@ scope access explicitly, and verify database results independently of CLI succes
 
 ## Current coverage and next additions
 
-| Contract             | Implemented coverage                                                                        | Next scenario                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Package installation | Exact hash and installed bytes; unsafe archives; fresh onboarding and partial recovery      | Upgrade an existing disposable consumer from previous release to candidate                |
-| Source access        | Reviewed scope, pseudonymization, retirement, private asset copy                            | Interrupted refresh must preserve the last valid baseline and retire temporary access     |
-| Restore              | PostgreSQL and Supabase, multiple schemas, identities, generated columns, exact asset bytes | Corrupt baseline and interrupted restore must fail without touching the source            |
-| Migration            | One confirmed candidate per provider                                                        | Failing migration; modified candidate after confirmation; explicit retry behavior         |
-| Application          | HTTP readiness and real data proofs; fail closed without database                           | Authentication, multi-target, and provider-specific proofs as their public contracts land |
-| Cleanup              | Confirmation-based target removal, ownership refusal, unrelated sentinel preservation       | Interrupt a full run after useful state exists and verify recovery                        |
-| Concurrency          | Independent workspace/install/IDs/port blocks; serialized Supabase phase                    | Repeat paired full runs on shared development machines                                    |
-| Performance          | Stage and total durations, package bytes, runner peak RSS                                   | Larger deterministic datasets and measured Docker/child-process memory                    |
+| Contract             | Implemented coverage                                                                                                               | Next scenario                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Package installation | Exact hash and installed bytes; unsafe archives; fresh onboarding and partial recovery; same-consumer upgrade with preserved state | Expand verified version pairs as public contracts evolve                                  |
+| Source access        | Reviewed scope, pseudonymization, retirement, private asset copy                                                                   | Interrupted refresh must preserve the last valid baseline and retire temporary access     |
+| Restore              | PostgreSQL and Supabase, multiple schemas, identities, generated columns, exact asset bytes                                        | Corrupt baseline and interrupted restore must fail without touching the source            |
+| Migration            | One confirmed candidate per provider                                                                                               | Failing migration; modified candidate after confirmation; explicit retry behavior         |
+| Application          | HTTP readiness and real data proofs; fail closed without database                                                                  | Authentication, multi-target, and provider-specific proofs as their public contracts land |
+| Cleanup              | Confirmation-based target removal, ownership refusal, unrelated sentinel preservation                                              | Interrupt a full run after useful state exists and verify recovery                        |
+| Concurrency          | Independent workspace/install/IDs/port blocks; serialized Supabase phase                                                           | Repeat paired full runs on shared development machines                                    |
+| Performance          | Stage and total durations, package bytes, runner peak RSS                                                                          | Larger deterministic datasets and measured Docker/child-process memory                    |
 
 The next-scenario column is a backlog, not a claim that these checks already run.
 The previous manual stale-confirmation and injected-failure investigations should become
@@ -43,8 +43,9 @@ run does not prove a new feature that has no scenario yet.
 2. During implementation: use the relevant synthetic consumer and focused scenario.
 3. Release candidate: `npm run candidate:verify -- /absolute/path/to/candidate.tgz`.
    Require both report verdicts; record unsupported or deliberately omitted scenarios.
-4. Compatibility expansion: add a disposable upgrade scenario before changing defaults.
-   Keep the previous-version and candidate artifacts distinct and hash both.
+4. Compatibility expansion: `npm run upgrade:verify -- /path/to/previous.tgz /path/to/candidate.tgz`.
+   The same consumer must work before and after installation; both exact hashes and
+   preserved-state checks are reported.
 
 GitHub runs fast checks on Node 22/24/26 plus PostgreSQL and published onboarding.
 Unpublished artifacts still require explicit local selection. Heavy Supabase runs stay

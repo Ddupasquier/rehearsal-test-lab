@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
-import { acquireHeavyLease } from "./candidate/isolation.mts";
+import { inspectArtifact } from "./candidate/artifact.mts";
 import {
-  access,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+  assertUpgradeVersions,
+  snapshotUpgradeState,
+  assertUpgradeState,
+  assertSupportedPreviousRelease,
+} from "./candidate/upgrade.mts";
+import { acquireHeavyLease } from "./candidate/isolation.mts";
+import { access, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { createCandidateConfiguration } from "./candidate/application-config.mts";
 import { createDockerSentinel } from "./candidate/docker-sentinel.mts";
@@ -72,7 +71,9 @@ const projects = {
 };
 const candidateConfigurations = new Map<string, CandidateConfiguration>();
 const temporaryMigrationPaths = new Set<string>();
-const plannedStages = [
+const previousPath = process.env.LAB_PREVIOUS_ARTIFACT || undefined;
+let previous: Awaited<ReturnType<typeof inspectArtifact>> | undefined;
+const baseStages = [
   "Inspect exact artifact",
   "Verify fresh onboarding",
   "Install exact artifact in both consumers",
@@ -87,6 +88,14 @@ const plannedStages = [
   "Clean Supabase runtime safely",
   "Prove unrelated Docker resources survived",
 ] as const;
+const plannedStages = baseStages.flatMap((name, index) =>
+  previousPath && [6, 10].includes(index)
+    ? [
+        name,
+        `Upgrade ${index === 6 ? "PostgreSQL" : "Supabase"} consumer and verify preserved state`,
+      ]
+    : [name],
+);
 
 let artifact: Artifact = {
   sha256: artifactSha256,
@@ -165,7 +174,13 @@ const planDigest = (data: Record<string, unknown>) =>
     "Confirmation digest",
   );
 
-const installCandidate = async (project: string, extractedPackage: string) => {
+const installCandidate = async (
+  project: string,
+  extractedPackage: string,
+  installPath = tarball,
+  expectedVersion = artifact.version,
+  runInstallHook = false,
+) => {
   await rm(resolve(project, "node_modules/@rehearsal-db/core"), {
     recursive: true,
     force: true,
@@ -174,12 +189,12 @@ const installCandidate = async (project: string, extractedPackage: string) => {
     "npm",
     [
       "install",
-      "--ignore-scripts",
+      ...(runInstallHook ? [] : ["--ignore-scripts"]),
       "--no-save",
       "--no-audit",
       "--no-fund",
       "--package-lock=false",
-      tarball,
+      installPath,
     ],
     { cwd: project },
   );
@@ -190,7 +205,7 @@ const installCandidate = async (project: string, extractedPackage: string) => {
     "Installed package metadata",
   );
   assert.equal(metadata.name, "@rehearsal-db/core");
-  assert.equal(metadata.version, artifact.version);
+  assert.equal(metadata.version, expectedVersion);
   return { project, fileCount, version: metadata.version };
 };
 
@@ -296,6 +311,7 @@ const exerciseTarget = (
   const project = projects[target];
   const doctor = json(cli(project, ["doctor"]), `${target} doctor`);
   assert.equal(doctor.data.state, "READY");
+  cli(project, ["reset"]);
   const candidates = json(cli(project, ["candidates"]), `${target} candidates`);
   assert.equal(candidates.data.candidateCount, 1);
   const candidateList = requireArray(
@@ -308,7 +324,6 @@ const exerciseTarget = (
     candidate.filename,
     "20261005000100_rehearsal_candidate_probe.sql",
   );
-  cli(project, ["reset"]);
   runCommand(independentVerification.command, independentVerification.args, {
     cwd: independentVerification.cwd,
   });
@@ -320,6 +335,8 @@ const exerciseTarget = (
     `${target} run`,
   );
   const verified = json(cli(project, ["verify"]), `${target} verify`);
+  assert.equal(run.status, "success");
+  assert.equal(verified.status, "success");
   return {
     doctorChecks: requireArray(doctor.data.checks, "Doctor checks").length,
     candidateCount: candidates.data.candidateCount,
@@ -328,6 +345,51 @@ const exerciseTarget = (
     runStatus: run.status,
     verifyStatus: verified.status,
   };
+};
+
+const upgradeConsumer = async (
+  target: Target,
+  verification: { command: string; args: string[]; cwd: string },
+) => {
+  if (previous) {
+    await runStage(
+      `Upgrade ${target === "postgresql" ? "PostgreSQL" : "Supabase"} consumer and verify preserved state`,
+      async () => {
+        const project = projects[target];
+        const before = await snapshotUpgradeState(project);
+        const installed = await installCandidate(
+          project,
+          resolve(
+            requireString(extractedDirectory, "Candidate package"),
+            "package",
+          ),
+          tarball,
+          artifact.version,
+          true,
+        );
+        assertUpgradeState(before, await snapshotUpgradeState(project));
+        const existing = json(
+          cli(project, ["verify"]),
+          `${target} existing runtime after upgrade`,
+        );
+        assert.equal(existing.status, "success");
+        runCommand(verification.command, verification.args, {
+          cwd: verification.cwd,
+        });
+        const after = exerciseTarget(target, verification);
+        assertUpgradeState(before, await snapshotUpgradeState(project));
+        return {
+          fromVersion: previous!.artifact.version!,
+          toVersion: artifact.version!,
+          preservedFiles: Object.keys(before).length,
+          installHookExercised: true,
+          existingRuntimeVerified: true,
+          installed,
+          ...after,
+        };
+      },
+    );
+  }
 };
 
 const cleanupTarget = (target: Target, requireRuntimeRemoval = true) => {
@@ -379,50 +441,24 @@ const startSupabaseSource = () => {
 };
 
 try {
-  await runStage(plannedStages[0], async () => {
-    extractedDirectory = await mkdtemp(
-      resolve(tmpdir(), "rehearsal-candidate-"),
-    );
-    const entries = runCommand("tar", ["-tzf", tarball])
-      .stdout.split("\n")
-      .filter(Boolean);
-    const verboseEntries = runCommand("tar", ["-tvzf", tarball])
-      .stdout.split("\n")
-      .filter(Boolean);
-    if (
-      entries.length === 0 ||
-      verboseEntries.length !== entries.length ||
-      verboseEntries.some((entry) => !["-", "d"].includes(entry.charAt(0))) ||
-      entries.some(
-        (entry) =>
-          !entry.startsWith("package/") ||
-          entry.includes("\\") ||
-          entry.split("/").includes(".."),
-      )
-    ) {
-      throw new Error("Candidate artifact contains an unsafe archive path.");
+  await runStage(baseStages[0], async () => {
+    const inspected = await inspectArtifact(tarball);
+    extractedDirectory = inspected.directory;
+    artifact = inspected.artifact;
+    if (previousPath) {
+      previous = await inspectArtifact(previousPath);
+      assertSupportedPreviousRelease(previous.artifact.version);
+      assertUpgradeVersions(previous.artifact.version!, artifact.version!);
     }
-    runCommand("tar", ["-xzf", tarball, "-C", extractedDirectory]);
-    const extractedPackage = resolve(extractedDirectory, "package");
-    const metadata = requireObject(
-      JSON.parse(
-        await readFile(resolve(extractedPackage, "package.json"), "utf8"),
-      ),
-      "Candidate metadata",
-    );
-    assert.equal(metadata.name, "@rehearsal-db/core");
-    const version = requireString(metadata.version, "Candidate version");
-    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u);
-    artifact = {
+    return {
       ...artifact,
-      sha256: artifactSha256,
-      name: "@rehearsal-db/core",
-      version,
+      ...(previous
+        ? { previousArtifact: { path: previousPath!, ...previous.artifact } }
+        : {}),
     };
-    return { ...artifact };
   });
 
-  await runStage(plannedStages[1], async () => {
+  await runStage(baseStages[1], async () => {
     const result = runCommand(
       "node",
       ["--import", "tsx", "scripts/verify-onboarding.mts", tarball],
@@ -439,14 +475,24 @@ try {
     return onboarding;
   });
 
-  await runStage(plannedStages[2], async () => {
+  await runStage(baseStages[2], async () => {
     const extractedPackage = resolve(
       requireString(extractedDirectory, "Extracted package directory"),
       "package",
     );
     const installed = {
-      postgresql: await installCandidate(projects.postgresql, extractedPackage),
-      supabase: await installCandidate(projects.supabase, extractedPackage),
+      postgresql: await installCandidate(
+        projects.postgresql,
+        previous ? resolve(previous.directory, "package") : extractedPackage,
+        previousPath ?? tarball,
+        previous?.artifact.version ?? artifact.version,
+      ),
+      supabase: await installCandidate(
+        projects.supabase,
+        previous ? resolve(previous.directory, "package") : extractedPackage,
+        previousPath ?? tarball,
+        previous?.artifact.version ?? artifact.version,
+      ),
     };
     const applicationPorts = {
       postgresql: (await configureCandidate(projects.postgresql)).port,
@@ -455,7 +501,7 @@ try {
     return { ...installed, applicationPorts };
   });
 
-  await runStage(plannedStages[3], async () => {
+  await runStage(baseStages[3], async () => {
     runCommand("npm", ["run", "postgresql:start"], { cwd: root });
     const verification = runCommand("npm", ["run", "postgresql:verify"], {
       cwd: root,
@@ -463,18 +509,18 @@ try {
     return { verification: verification.stdout.trim() };
   });
 
-  await runStage(plannedStages[4], async () => {
+  await runStage(baseStages[4], async () => {
     const baseline = await refreshBaseline("postgresql");
     await createCandidateMigration("postgresql");
     return { ...baseline, candidateMigrationCreated: true };
   });
 
-  await runStage(plannedStages[5], () => {
+  await runStage(baseStages[5], () => {
     sentinel = createDockerSentinel(process.env.LAB_RUN_ID);
     return { resources: sentinel.names };
   });
 
-  await runStage(plannedStages[6], async () => {
+  await runStage(baseStages[6], async () => {
     runCommand("npm", ["run", "postgresql:stop"], { cwd: root });
     return exerciseTarget("postgresql", {
       command: "npm",
@@ -483,9 +529,15 @@ try {
     });
   });
 
-  await runStage(plannedStages[7], () => cleanupTarget("postgresql"));
+  await upgradeConsumer("postgresql", {
+    command: "npm",
+    args: ["run", "verify:target"],
+    cwd: projects.postgresql,
+  });
 
-  await runStage(plannedStages[8], async () => {
+  await runStage(baseStages[7], () => cleanupTarget("postgresql"));
+
+  await runStage(baseStages[8], async () => {
     releaseHeavyLease = await acquireHeavyLease();
     const startup = startSupabaseSource();
     runCommand("npm", ["run", "supabase:reset"], { cwd: root });
@@ -496,13 +548,13 @@ try {
     return { startup, verification: verification.stdout.trim() };
   });
 
-  await runStage(plannedStages[9], async () => {
+  await runStage(baseStages[9], async () => {
     const baseline = await refreshBaseline("supabase");
     await createCandidateMigration("supabase");
     return { ...baseline, candidateMigrationCreated: true };
   });
 
-  await runStage(plannedStages[10], async () => {
+  await runStage(baseStages[10], async () => {
     runCommand("npm", ["run", "supabase:stop"], { cwd: root });
     return exerciseTarget("supabase", {
       command: "npm",
@@ -511,8 +563,14 @@ try {
     });
   });
 
-  await runStage(plannedStages[11], () => cleanupTarget("supabase"));
-  await runStage(plannedStages[12], () => {
+  await upgradeConsumer("supabase", {
+    command: "npm",
+    args: ["run", "rehearsal:verify-target"],
+    cwd: root,
+  });
+
+  await runStage(baseStages[11], () => cleanupTarget("supabase"));
+  await runStage(baseStages[12], () => {
     if (!sentinel) throw new Error("Docker sentinel was not created.");
     return sentinel.verify();
   });
@@ -577,6 +635,11 @@ try {
       },
     ],
     [
+      "Remove extracted previous artifact",
+      () =>
+        previous && rm(previous.directory, { recursive: true, force: true }),
+    ],
+    [
       "Remove extracted artifact",
       () =>
         extractedDirectory &&
@@ -603,6 +666,9 @@ const written = await writeReport({
   plannedStages,
   teardown,
   failure,
+  ...(previous
+    ? { previousArtifact: { path: previousPath!, ...previous.artifact } }
+    : {}),
 });
 console.log(`\nAcceptance report: ${written.markdownPath}`);
 console.log(`Machine report: ${written.jsonPath}`);

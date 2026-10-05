@@ -117,6 +117,27 @@ tarball remain under `test-results/candidate-acceptance/`.
 See [Expansion coverage](docs/expansion-coverage.md) for implemented checks, the next
 scenarios, and an acceptance contract for feature owners.
 
+## Version upgrade acceptance
+
+```bash
+npm run upgrade:verify -- /absolute/path/to/previous.tgz /absolute/path/to/candidate.tgz
+```
+
+Supply two exact artifacts: the previous supported release and a newer candidate.
+The lab builds working PostgreSQL and Supabase consumers with the previous release,
+then installs the candidate into those same directories with its normal install hook.
+It verifies existing runtime data before resetting, then repeats baseline restore,
+confirmed migrations, independent database checks, application proofs, and cleanup.
+Configuration, privacy keys, immutable baseline files and permissions, and the active
+baseline pointer must remain unchanged. Both versions and checksums are recorded;
+same-version replacements and downgrades are rejected.
+
+Require both reports under `test-results/upgrade-acceptance/` to pass. This compatibility
+gate complements fresh candidate acceptance. The scoped UUID fixture requires a previous
+release of beta.13 or newer: beta.12 cannot restore this profile. Older releases are
+refused before installing either consumer. Passing one version pair does not certify
+all releases or configurations.
+
 ## Non-negotiable safety boundary
 
 - Never point routine tests at BlendCalc or another production database.
