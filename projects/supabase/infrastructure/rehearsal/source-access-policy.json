@@ -1,0 +1,129 @@
+{
+  "accessVersion": 1,
+  "targetFingerprint": "44a93eed799a6ff3723c2e1b124aed61e3ba6b6fa93e1b2e63672b4c4cfc0389",
+  "administratorEnvironmentVariable": "REHEARSAL_SOURCE_ADMIN_URL",
+  "reader": {
+    "mode": "managed",
+    "role": "rehearsal_lab_reader",
+    "ownerRole": "rehearsal_lab_owner",
+    "credentialFile": ".rehearsal/secrets/source-reader.env",
+    "validForMinutes": 30
+  },
+  "exportSchema": "rehearsal_export_lab",
+  "migrationLedger": {
+    "schema": "supabase_migrations",
+    "table": "schema_migrations",
+    "versionColumn": "version",
+    "nameColumn": "name",
+    "statementsColumn": "statements"
+  },
+  "relations": [
+    {
+      "source": { "schema": "lab_api", "table": "accounts" },
+      "view": "approved_owner_account",
+      "targetSchema": "lab_api",
+      "targetTable": "accounts",
+      "columns": [
+        "id",
+        "email",
+        "display_name",
+        "role",
+        "avatar_path",
+        "preferences",
+        "created_at",
+        "updated_at"
+      ],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    },
+    {
+      "source": { "schema": "lab_api", "table": "projects" },
+      "view": "approved_owner_projects",
+      "targetSchema": "lab_api",
+      "targetTable": "projects",
+      "columns": ["id", "owner_id", "name", "slug", "settings", "created_at"],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "owner_id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    },
+    {
+      "source": { "schema": "lab_api", "table": "entries" },
+      "view": "approved_owner_entries",
+      "targetSchema": "lab_api",
+      "targetTable": "entries",
+      "columns": [
+        "id",
+        "project_id",
+        "owner_id",
+        "title",
+        "amount",
+        "status",
+        "details",
+        "occurred_on",
+        "created_at"
+      ],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "owner_id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    },
+    {
+      "source": { "schema": "lab_api", "table": "audit_events" },
+      "view": "approved_owner_audit_events",
+      "targetSchema": "lab_api",
+      "targetTable": "audit_events",
+      "columns": ["id", "owner_id", "event_type", "payload", "occurred_at"],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "owner_id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    },
+    {
+      "source": { "schema": "publication", "table": "documents" },
+      "view": "approved_owner_documents",
+      "targetSchema": "publication",
+      "targetTable": "documents",
+      "columns": [
+        "id",
+        "owner_id",
+        "slug",
+        "title",
+        "published_at",
+        "metadata"
+      ],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "owner_id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    }
+  ],
+  "assetReader": {
+    "endpointFingerprint": "ed792b695d4c8f7c6a9a3f428b40075c0b0afb8eb987d918166fdf151f3c0a4f",
+    "baseUrlEnvironmentVariable": "REHEARSAL_SOURCE_STORAGE_URL",
+    "tokenEnvironmentVariable": "REHEARSAL_SOURCE_STORAGE_TOKEN",
+    "maximumObjects": 10,
+    "maximumObjectBytes": 1048576,
+    "maximumTotalBytes": 10485760
+  },
+  "assets": [
+    {
+      "bucket": "private-lab-assets",
+      "prefixEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID",
+      "rights": "approved-owner",
+      "pathMapping": "owner-storage"
+    }
+  ]
+}

@@ -1,0 +1,393 @@
+{
+  "policyVersion": 2,
+  "migrationCutoff": "20261004000100",
+  "bindings": {
+    "approved-owner": {
+      "environmentVariable": "REHEARSAL_APPROVED_OWNER_ID",
+      "approvedValueSha256": "bd7662a5eeb41614e720d477abfcb2272e19a8a70a93b7e3bc8560d44ad326e9"
+    }
+  },
+  "pathMappings": {
+    "owner-storage": {
+      "binding": "approved-owner",
+      "format": "uuid",
+      "namespace": "account-id",
+      "maximumBytes": 512,
+      "maximumSegments": 8
+    }
+  },
+  "tables": [
+    {
+      "schema": "lab_api",
+      "name": "accounts",
+      "sourceRows": "STREAM AND SANITIZE",
+      "ownerBinding": { "binding": "approved-owner", "column": "id" },
+      "columns": [
+        {
+          "name": "id",
+          "action": "PSEUDONYMIZE",
+          "recipe": { "format": "uuid", "namespace": "account-id" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "email",
+          "action": "PSEUDONYMIZE",
+          "recipe": { "format": "email", "namespace": "account-email" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "display_name",
+          "action": "REPLACE",
+          "recipe": { "kind": "constant", "value": "Synthetic Lab Owner" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "role",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "avatar_path",
+          "action": "DERIVE",
+          "recipe": { "kind": "path-map", "mapping": "owner-storage" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "preferences",
+          "action": "REPLACE",
+          "recipe": {
+            "kind": "constant",
+            "value": {
+              "theme": "mint",
+              "notifications": { "email": false, "push": false }
+            }
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "created_at",
+          "action": "DERIVE",
+          "recipe": {
+            "kind": "date-shift",
+            "days": 30,
+            "group": "account-timeline"
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "updated_at",
+          "action": "DERIVE",
+          "recipe": {
+            "kind": "date-shift",
+            "days": 30,
+            "group": "account-timeline"
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        }
+      ]
+    },
+    {
+      "schema": "lab_api",
+      "name": "projects",
+      "sourceRows": "STREAM AND SANITIZE",
+      "ownerBinding": { "binding": "approved-owner", "column": "owner_id" },
+      "columns": [
+        {
+          "name": "id",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "YES",
+          "foreignKey": null
+        },
+        {
+          "name": "owner_id",
+          "action": "PSEUDONYMIZE",
+          "recipe": { "format": "uuid", "namespace": "account-id" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": {
+            "schema": "lab_api",
+            "table": "accounts",
+            "column": "id"
+          }
+        },
+        {
+          "name": "name",
+          "action": "REPLACE",
+          "recipe": { "kind": "constant", "value": "Synthetic Lab Project" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "slug",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "settings",
+          "action": "REPLACE",
+          "recipe": {
+            "kind": "constant",
+            "value": { "currency": "USD", "archived": false }
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "created_at",
+          "action": "DERIVE",
+          "recipe": {
+            "kind": "date-shift",
+            "days": 30,
+            "group": "account-timeline"
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        }
+      ]
+    },
+    {
+      "schema": "lab_api",
+      "name": "entries",
+      "sourceRows": "STREAM AND SANITIZE",
+      "ownerBinding": { "binding": "approved-owner", "column": "owner_id" },
+      "columns": [
+        {
+          "name": "id",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "YES",
+          "foreignKey": null
+        },
+        {
+          "name": "project_id",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": {
+            "schema": "lab_api",
+            "table": "projects",
+            "column": "id"
+          }
+        },
+        {
+          "name": "owner_id",
+          "action": "PSEUDONYMIZE",
+          "recipe": { "format": "uuid", "namespace": "account-id" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": {
+            "schema": "lab_api",
+            "table": "accounts",
+            "column": "id"
+          }
+        },
+        {
+          "name": "title",
+          "action": "REPLACE",
+          "recipe": { "kind": "constant", "value": "Synthetic entry" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "amount",
+          "action": "REPLACE",
+          "recipe": { "kind": "constant", "value": 42.5 },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "status",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "details",
+          "action": "REPLACE",
+          "recipe": {
+            "kind": "constant",
+            "value": {
+              "category": "synthetic",
+              "sequence": 0,
+              "flags": ["sanitized"]
+            }
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "occurred_on",
+          "action": "DERIVE",
+          "recipe": {
+            "kind": "date-shift",
+            "days": 30,
+            "group": "account-timeline"
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "created_at",
+          "action": "DERIVE",
+          "recipe": {
+            "kind": "date-shift",
+            "days": 30,
+            "group": "account-timeline"
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        }
+      ]
+    },
+    {
+      "schema": "lab_api",
+      "name": "audit_events",
+      "sourceRows": "STREAM AND SANITIZE",
+      "ownerBinding": { "binding": "approved-owner", "column": "owner_id" },
+      "columns": [
+        {
+          "name": "id",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "YES",
+          "foreignKey": null
+        },
+        {
+          "name": "owner_id",
+          "action": "PSEUDONYMIZE",
+          "recipe": { "format": "uuid", "namespace": "account-id" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": {
+            "schema": "lab_api",
+            "table": "accounts",
+            "column": "id"
+          }
+        },
+        {
+          "name": "event_type",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "payload",
+          "action": "REPLACE",
+          "recipe": {
+            "kind": "constant",
+            "value": { "synthetic": true, "ordinal": 0 }
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "occurred_at",
+          "action": "DERIVE",
+          "recipe": {
+            "kind": "date-shift",
+            "days": 30,
+            "group": "account-timeline"
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        }
+      ]
+    },
+    {
+      "schema": "publication",
+      "name": "documents",
+      "sourceRows": "STREAM AND SANITIZE",
+      "ownerBinding": { "binding": "approved-owner", "column": "owner_id" },
+      "columns": [
+        {
+          "name": "id",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "YES",
+          "foreignKey": null
+        },
+        {
+          "name": "owner_id",
+          "action": "PSEUDONYMIZE",
+          "recipe": { "format": "uuid", "namespace": "account-id" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": {
+            "schema": "lab_api",
+            "table": "accounts",
+            "column": "id"
+          }
+        },
+        {
+          "name": "slug",
+          "action": "KEEP",
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "title",
+          "action": "REPLACE",
+          "recipe": { "kind": "constant", "value": "Synthetic publication" },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "published_at",
+          "action": "DERIVE",
+          "recipe": {
+            "kind": "date-shift",
+            "days": 30,
+            "group": "account-timeline"
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        },
+        {
+          "name": "metadata",
+          "action": "REPLACE",
+          "recipe": {
+            "kind": "constant",
+            "value": { "audience": "synthetic" }
+          },
+          "generated": "NEVER",
+          "identity": "NO",
+          "foreignKey": null
+        }
+      ]
+    }
+  ]
+}

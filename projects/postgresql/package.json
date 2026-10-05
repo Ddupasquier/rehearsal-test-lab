@@ -1,0 +1,21 @@
+{
+  "name": "@rehearsal-test-lab/postgresql",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:rehearsal": "node app/server.mjs",
+    "test": "npm run test:rehearsal",
+    "test:rehearsal": "node app/proof.mjs",
+    "verify:target": "node scripts/verify-rehearsal-target.mjs",
+    "source:local": "node scripts/with-local-source.mjs",
+    "rehearsal": "rehearsal"
+  },
+  "devDependencies": {
+    "@rehearsal-db/core": "beta",
+    "pg": "^8.16.3"
+  },
+  "engines": {
+    "node": ">=22 <27"
+  }
+}

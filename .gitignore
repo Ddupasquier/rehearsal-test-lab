@@ -1,0 +1,21 @@
+node_modules/
+*.log
+.DS_Store
+
+# Local credentials and generated Rehearsal artifacts
+.env
+.env.*
+!.env.example
+.rehearsal/
+**/.rehearsal/
+**/.env.rehearsal-service.local
+
+# Supabase CLI link and runtime state
+**/supabase/.temp/
+**/supabase/.branches/
+
+# Test output
+artifacts/
+test-results/
+coverage/
+

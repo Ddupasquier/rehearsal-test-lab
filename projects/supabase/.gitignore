@@ -1,0 +1,3 @@
+# Rehearsal local artifacts
+.rehearsal/
+.env.rehearsal-service.local

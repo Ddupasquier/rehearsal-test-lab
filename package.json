@@ -1,0 +1,24 @@
+{
+  "name": "rehearsal-test-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check-layout.mjs",
+    "supabase:start": "supabase start --workdir projects/supabase",
+    "supabase:stop": "supabase stop --workdir projects/supabase",
+    "supabase:reset": "supabase db reset --workdir projects/supabase",
+    "supabase:assets": "node scripts/seed-supabase-assets.mjs",
+    "supabase:verify": "node scripts/verify-supabase.mjs",
+    "rehearsal:verify-target": "node scripts/verify-rehearsal-target.mjs",
+    "postgresql:start": "node scripts/ensure-postgresql-volume.mjs && docker compose -f projects/postgresql/compose.yaml up -d --wait",
+    "postgresql:verify": "node projects/postgresql/verify.mjs",
+    "postgresql:verify-target": "npm --prefix projects/postgresql run verify:target",
+    "postgresql:stop": "docker compose -f projects/postgresql/compose.yaml stop",
+    "postgresql:fallback:start": "node scripts/postgresql-runtime.mjs start",
+    "postgresql:fallback:stop": "node scripts/postgresql-runtime.mjs stop"
+  },
+  "engines": {
+    "node": ">=22 <27"
+  }
+}

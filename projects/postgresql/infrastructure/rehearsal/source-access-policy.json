@@ -1,0 +1,69 @@
+{
+  "accessVersion": 1,
+  "targetFingerprint": "61b477d3350631f8c55ebdec89247ff99874f6967fa426f493998d3d001dc2ac",
+  "administratorEnvironmentVariable": "REHEARSAL_SOURCE_ADMIN_URL",
+  "reader": {
+    "mode": "managed",
+    "role": "rehearsal_pg_lab_reader",
+    "ownerRole": "rehearsal_pg_lab_owner",
+    "credentialFile": ".rehearsal/secrets/source-reader.env",
+    "validForMinutes": 30
+  },
+  "exportSchema": "rehearsal_export_pg_lab",
+  "migrationLedger": {
+    "schema": "rehearsal_migrations",
+    "table": "schema_migrations",
+    "versionColumn": "version",
+    "nameColumn": "name",
+    "statementsColumn": "statements"
+  },
+  "relations": [
+    {
+      "source": { "schema": "lab_api", "table": "accounts" },
+      "view": "approved_owner_account",
+      "targetSchema": "lab_api",
+      "targetTable": "accounts",
+      "columns": ["id", "email", "display_name", "created_at"],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    },
+    {
+      "source": { "schema": "lab_api", "table": "entries" },
+      "view": "approved_owner_entries",
+      "targetSchema": "lab_api",
+      "targetTable": "entries",
+      "columns": ["id", "owner_id", "title", "amount", "details", "created_at"],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "owner_id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    },
+    {
+      "source": { "schema": "publication", "table": "documents" },
+      "view": "approved_owner_documents",
+      "targetSchema": "publication",
+      "targetTable": "documents",
+      "columns": [
+        "id",
+        "owner_id",
+        "slug",
+        "title",
+        "published_at",
+        "metadata"
+      ],
+      "orderBy": ["id"],
+      "rowScope": {
+        "kind": "approved-owner",
+        "column": "owner_id",
+        "valueEnvironmentVariable": "REHEARSAL_APPROVED_OWNER_ID"
+      }
+    }
+  ],
+  "assets": []
+}

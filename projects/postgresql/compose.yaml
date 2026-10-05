@@ -1,0 +1,28 @@
+name: rehearsal-test-lab-postgresql
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rehearsal-test-lab-postgresql
+    labels:
+      com.rehearsal-test-lab.resource: postgresql
+    environment:
+      POSTGRES_DB: rehearsal_lab
+      POSTGRES_USER: rehearsal_lab
+      POSTGRES_PASSWORD: local-synthetic-only
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rehearsal_lab -d rehearsal_lab"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - rehearsal_lab_postgresql:/var/lib/postgresql/data
+      - ./database/migrations/20261004000100_create_lab_model.sql:/docker-entrypoint-initdb.d/010_schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/020_seed.sql:ro
+
+volumes:
+  rehearsal_lab_postgresql:
+    name: rehearsal_lab_postgresql
+    external: true
