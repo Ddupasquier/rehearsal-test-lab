@@ -5,24 +5,25 @@ This private repository is a clean-room consumer of
 Rehearsal the way an application developer uses it: through the published or packed
 package and its public CLI.
 
-It does **not** contain BlendCalc data, credentials, or private application code. Its
-seed is deterministic, synthetic, and intentionally shaped like a demanding real app.
+## Guiding rule
 
-## Testing policy
+**Test Lab represents a new developer adopting Rehearsal for their own application.
+Its domain, schema, application code, and acceptance criteria are independent of BlendCalc.**
 
-This lab is being prepared as Rehearsal's primary development and release-validation
-environment. It becomes the official primary environment after BlendCalc removes its
-remaining legacy Rehearsal code and that removal passes acceptance. New reusable behavior
-should already be reproducible here with synthetic data and public package interfaces.
+The primary consumer is a neighbourhood library lending app. It runs, migrates, and
+passes its own tests before Rehearsal is installed. Adoption then uses the exact public
+package, generated setup, explicit developer review, source-access confirmations, and
+ordinary application proofs. Success must not require another application's repository,
+integration code, credentials, or retirement milestone.
 
-During that transition, BlendCalc remains the required final consumer-retirement check.
-Afterward, BlendCalc and other real applications become additional downstream integration
-checks used when a change depends on consumer-specific behavior that the lab cannot
-faithfully reproduce. A reusable consumer failure should become a synthetic lab regression
-whenever practical.
+The larger PostgreSQL and Supabase profiles remain additional regression coverage for
+privacy, Storage, identities, provider behavior, and upgrades. Their prepared configurations
+are not a substitute for a new user's first experience. A reusable downstream failure can
+be reproduced synthetically here without copying that consumer's schema or business logic.
 
 ## What lives here
 
+- `projects/library` — the primary, ordinary app with no preinstalled Rehearsal integration.
 - `projects/supabase` — a fully local synthetic Supabase source and disposable target.
 - `projects/postgresql` — an independent PostgreSQL source and consumer lifecycle.
 - `docs` — the safety rules, data model, and instructions for adding another provider.
@@ -33,8 +34,8 @@ must not depend on another provider being available.
 
 ## First check
 
-Use Node.js 22, 24, or 26, Docker or another Docker-compatible engine, and Supabase CLI
-2.117.0 or newer.
+Use Node.js 22, 24, or 26 and Docker or another Docker-compatible engine. The additional
+Supabase regression profile also requires Supabase CLI 2.117.0 or newer.
 
 ```bash
 nvm use
@@ -44,6 +45,26 @@ npm run check
 
 `npm run check` runs strict TypeScript checking, lab layout and credential checks, and
 the database-independent regression tests. CI runs these checks on Node.js 22, 24, and 26.
+
+## Primary new-user adoption check
+
+```bash
+npm run adoption:verify -- /absolute/path/to/rehearsal-db-core.tgz
+```
+
+This first proves the ordinary library app works without Rehearsal, including migrations,
+HTTP tests, and a successful checkout. It then installs the exact package normally,
+checks public init/setup guidance, reviews generated declarations, prepares a sanitized
+baseline, and rehearses a real library migration using the same application commands.
+Independent database assertions verify sanitization and the applied index.
+
+The original app remains clean. Reports, initial guidance, and developer review decisions
+live under `test-results/adoption/`. No BlendCalc dependency or source access is involved.
+The guide is exercised through reproducible public CLI commands; human interactive-wizard
+and browser usability remain separate checks. Read [the adoption contract](docs/new-user-adoption.md).
+
+Candidate and upgrade acceptance run this primary scenario first, followed by the additional
+profiles. GitHub's published-adoption job also runs it against the published beta.
 
 ## TypeScript development
 

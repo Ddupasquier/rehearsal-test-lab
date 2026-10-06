@@ -1,0 +1,19 @@
+{
+  "name": "neighbourhood-library",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx app/server.mts",
+    "test": "node --import tsx app/proof.mts",
+    "migrate": "node --import tsx scripts/database.mts migrate",
+    "seed": "node --import tsx scripts/database.mts seed"
+  },
+  "dependencies": {
+    "pg": "8.16.3",
+    "tsx": "4.20.6"
+  },
+  "engines": {
+    "node": ">=22 <27"
+  }
+}

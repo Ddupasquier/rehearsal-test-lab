@@ -75,7 +75,7 @@ const previousPath = process.env.LAB_PREVIOUS_ARTIFACT || undefined;
 let previous: Awaited<ReturnType<typeof inspectArtifact>> | undefined;
 const baseStages = [
   "Inspect exact artifact",
-  "Verify fresh onboarding",
+  "Verify independent new-user adoption and onboarding",
   "Install exact artifact in both consumers",
   "Prepare PostgreSQL source",
   "Refresh PostgreSQL baseline",
@@ -459,6 +459,22 @@ try {
   });
 
   await runStage(baseStages[1], async () => {
+    const adoptionResult = runCommand(
+      "node",
+      ["--import", "tsx", "scripts/verify-adoption-worker.mts", tarball],
+      {
+        cwd: root,
+        env: {
+          LAB_ADOPTION_REPORT_DIRECTORY: resolve(reportDirectory, "adoption"),
+        },
+      },
+    );
+    const adoption = parseJsonOutput(
+      adoptionResult.stdout,
+      "Independent new-user adoption",
+    );
+    assert.equal(adoption.status, "passed");
+    assert.equal(adoption.artifactSha256, artifactSha256);
     const result = runCommand(
       "node",
       ["--import", "tsx", "scripts/verify-onboarding.mts", tarball],
@@ -472,7 +488,7 @@ try {
     );
     assert.equal(onboarding.status, "passed");
     assert.equal(onboarding.artifactSha256, artifactSha256);
-    return onboarding;
+    return { adoption, onboarding };
   });
 
   await runStage(baseStages[2], async () => {

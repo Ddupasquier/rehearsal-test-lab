@@ -1,0 +1,14 @@
+name: neighbourhood-library
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: library
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: local-synthetic-only
+    ports: ["127.0.0.1:55482:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U library -d library"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

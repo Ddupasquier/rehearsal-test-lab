@@ -24,6 +24,7 @@ jobs:
       - run: npm run check
       - run: npm run candidate:verify -- --help
       - run: npm run upgrade:verify -- --help
+      - run: npm run adoption:verify -- --help
 
   postgresql-fixture:
     runs-on: ubuntu-24.04
@@ -40,7 +41,7 @@ jobs:
       - if: always()
         run: docker volume rm rehearsal_lab_postgresql || true
 
-  published-onboarding:
+  published-adoption:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -52,4 +53,5 @@ jobs:
       - name: Verify the currently published beta
         run: |
           tarball="$(npm pack @rehearsal-db/core@beta --silent --pack-destination "$RUNNER_TEMP")"
+          npm run adoption:verify -- "$RUNNER_TEMP/$tarball"
           npm run onboarding:verify -- "$RUNNER_TEMP/$tarball"

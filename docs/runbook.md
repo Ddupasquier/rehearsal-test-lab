@@ -1,13 +1,15 @@
 # Complete local runbook
 
-Choose one consumer. Supabase covers its local service stack and Storage; ordinary
-PostgreSQL proves that the core lifecycle does not depend on Supabase.
+Start with the independent library app adoption scenario. It represents a developer
+bringing an existing working application to Rehearsal for the first time:
 
-This is the future canonical Rehearsal development-acceptance workflow. Record the exact
-artifact hash and observed results here first. Until BlendCalc's legacy Rehearsal code is
-removed and that removal passes, also complete its focused retirement acceptance. After
-that milestone, use BlendCalc or another downstream app only for behavior that cannot be
-represented faithfully by these synthetic consumers.
+```bash
+npm run adoption:verify -- /absolute/path/to/candidate.tgz
+```
+
+The additional Supabase and PostgreSQL profiles cover demanding provider and data cases.
+They do not depend on BlendCalc's architecture or retirement work. Record lab evidence
+independently; use downstream applications only for focused consumer-specific checks.
 
 ## 0. Verify onboarding from the exact artifact
 

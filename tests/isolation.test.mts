@@ -60,6 +60,7 @@ test("parallel acceptance leases and bindings do not share ports or Docker ident
       "sourceSupabase",
       "targetPostgresql",
       "targetSupabase",
+      "adoptionTarget",
       "sourceVolume",
     ] as const)
       assert.notEqual(first[key], second[key]);

@@ -11,6 +11,14 @@ const requiredFiles = [
   "docs/runbook.md",
   "docs/safety.md",
   "scripts/verify-onboarding.mts",
+  "scripts/verify-adoption.mts",
+  "scripts/verify-adoption-worker.mts",
+  "scripts/adoption/review.mts",
+  "docs/new-user-adoption.md",
+  "projects/library/package.json",
+  "projects/library/package-lock.json",
+  "projects/library/app/server.mts",
+  "projects/library/app/proof.mts",
   "scripts/verify-candidate.mts",
   "scripts/candidate/application-config.mts",
   "scripts/candidate/docker-sentinel.mts",
@@ -30,6 +38,31 @@ const requiredFiles = [
 ];
 
 await Promise.all(requiredFiles.map((file) => access(resolve(root, file))));
+
+const library = JSON.parse(
+  await readFile(resolve(root, "projects/library/package.json"), "utf8"),
+);
+if (
+  library.dependencies?.["@rehearsal-db/core"] ||
+  library.devDependencies?.["@rehearsal-db/core"]
+)
+  throw new Error(
+    "The ordinary library app must start without Rehearsal installed.",
+  );
+for (const path of [
+  "rehearsal.config.mjs",
+  "infrastructure/rehearsal",
+  ".rehearsal",
+]) {
+  await access(resolve(root, "projects/library", path)).then(
+    () => {
+      throw new Error(
+        `The clean adoption template contains prepared Rehearsal state: ${path}`,
+      );
+    },
+    () => undefined,
+  );
+}
 
 await access(
   resolve(root, "projects/supabase/supabase/.temp/linked-project.json"),

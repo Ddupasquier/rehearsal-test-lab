@@ -4,6 +4,10 @@ The lab consumes an exact packed public package. Add observable assertions in th
 repository rather than importing Rehearsal implementation modules. Keep data synthetic,
 scope access explicitly, and verify database results independently of CLI success.
 
+The primary consumer is an ordinary library lending app that works before installation.
+Start with clean adoption and user-visible guidance; use the prepared profiles for
+additional coverage. No downstream application defines this lab's architecture or readiness.
+
 ## Current coverage and next additions
 
 | Contract             | Implemented coverage                                                                                                               | Next scenario                                                                             |
@@ -41,13 +45,13 @@ run does not prove a new feature that has no scenario yet.
 
 1. Every change: `npm run check` (compiler, layout/credential checks, independent tests).
 2. During implementation: use the relevant synthetic consumer and focused scenario.
-3. Release candidate: `npm run candidate:verify -- /absolute/path/to/candidate.tgz`.
+3. Release candidate: clean library adoption runs first inside `npm run candidate:verify -- /absolute/path/to/candidate.tgz`.
    Require both report verdicts; record unsupported or deliberately omitted scenarios.
 4. Compatibility expansion: `npm run upgrade:verify -- /path/to/previous.tgz /path/to/candidate.tgz`.
    The same consumer must work before and after installation; both exact hashes and
    preserved-state checks are reported.
 
-GitHub runs fast checks on Node 22/24/26 plus PostgreSQL and published onboarding.
+GitHub runs fast checks on Node 22/24/26 plus PostgreSQL, published adoption, and onboarding.
 Unpublished artifacts still require explicit local selection. Heavy Supabase runs stay
 local and serialize; routine work creates no hosted Supabase compute.
 

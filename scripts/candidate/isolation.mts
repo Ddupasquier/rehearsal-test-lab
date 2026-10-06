@@ -112,6 +112,7 @@ export function isolationBindings(
     sourceSupabase: prefix,
     targetPostgresql: `${prefix}-postgresql-rehearsal`,
     targetSupabase: `${prefix}-supabase-rehearsal`,
+    adoptionTarget: `${prefix}-library-target`,
     sourceVolume: `rtl_${token}_postgresql`,
   };
 }
@@ -234,6 +235,39 @@ export async function removeOwnedResources(
   bindings: IsolationBindings,
   command: typeof runCommand = runCommand,
 ) {
+  const adoptionSources = command("docker", [
+    "container",
+    "ls",
+    "--all",
+    "--quiet",
+    "--filter",
+    `label=com.rehearsal-test-lab.parent-run=${bindings.prefix}`,
+  ])
+    .stdout.trim()
+    .split(/\s+/u)
+    .filter(Boolean);
+  for (const id of adoptionSources)
+    command("docker", ["container", "rm", "--force", "--volumes", id]);
+  for (const type of ["container", "volume"] as const) {
+    const ids = command("docker", [
+      type,
+      "ls",
+      ...(type === "container" ? ["--all"] : []),
+      "--quiet",
+      "--filter",
+      `label=com.rehearsal-db.project=${bindings.adoptionTarget}`,
+    ])
+      .stdout.trim()
+      .split(/\s+/u)
+      .filter(Boolean);
+    for (const id of ids)
+      command("docker", [
+        type,
+        "rm",
+        ...(type === "container" ? ["--force"] : []),
+        id,
+      ]);
+  }
   for (const type of ["container", "network", "volume"] as const) {
     const ids = command("docker", [
       type,

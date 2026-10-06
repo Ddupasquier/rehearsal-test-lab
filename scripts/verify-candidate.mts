@@ -18,7 +18,8 @@ import { errorMessage } from "./shared/validation.mts";
 
 const root = resolve(import.meta.dirname, "..");
 const upgrading = process.argv[2] === "--upgrade";
-const requested = process.argv[upgrading ? 4 : 2];
+const adopting = process.argv[2] === "--adoption";
+const requested = process.argv[upgrading ? 4 : adopting ? 3 : 2];
 const previousRequested = upgrading ? process.argv[3] : undefined;
 if (!upgrading && (requested === "--help" || requested === "-h")) {
   console.log(`Usage: npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
@@ -29,7 +30,7 @@ slot to limit memory use. Reports remain in test-results/candidate-acceptance/.
 Failed workspaces are retained for diagnosis; successful workspaces are removed.`);
   process.exit(0);
 }
-if (!requested || process.argv.length !== (upgrading ? 5 : 3))
+if (!requested || process.argv.length !== (upgrading ? 5 : adopting ? 4 : 3))
   throw new Error(
     "Pass one exact candidate tarball: npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz",
   );
@@ -49,7 +50,9 @@ const reportDirectory = resolve(
   root,
   upgrading
     ? "test-results/upgrade-acceptance"
-    : "test-results/candidate-acceptance",
+    : adopting
+      ? "test-results/adoption"
+      : "test-results/candidate-acceptance",
   runId,
 );
 const workspace = resolve(reportDirectory, "workspace");
@@ -92,7 +95,14 @@ try {
   exitCode = await new Promise<number>((done, reject) => {
     const child = spawn(
       process.execPath,
-      ["--import", "tsx", "scripts/verify-candidate-worker.mts", snapshot],
+      [
+        "--import",
+        "tsx",
+        adopting
+          ? "scripts/verify-adoption-worker.mts"
+          : "scripts/verify-candidate-worker.mts",
+        snapshot,
+      ],
       {
         cwd: workspace,
         detached: process.platform !== "win32",
@@ -101,6 +111,9 @@ try {
           ...process.env,
           LAB_REPORT_DIRECTORY: reportDirectory,
           LAB_RUN_ID: bindings.prefix,
+          LAB_ADOPTION_BASE_PORT: String(lease.base + 29),
+          LAB_ADOPTION_PARENT_PORT_LEASE: lease.path,
+          LAB_ADOPTION_REPORT_DIRECTORY: adopting ? reportDirectory : "",
           LAB_PREVIOUS_ARTIFACT: previousSnapshot ?? "",
           LAB_POSTGRESQL_APP_PORT: String(lease.base + 28),
           LAB_SUPABASE_APP_PORT: String(lease.base + 27),
