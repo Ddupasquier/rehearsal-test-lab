@@ -19,8 +19,13 @@ source-access declarations, sanitization policies, or private runtime state.
    of a deliberately removed generated config. Compare project bytes and permissions.
 4. Review the generated application commands and declarations. The automation records
    these decisions rather than pretending a starter template is ready to trust.
+   Compare approved column, identity, and foreign-key decisions with schema-only source
+   evidence, and record the current source/privacy wizard handoff gap.
 5. Approve only the small synthetic fixture tables; replace reader labels. Prepare a
    baseline through reviewed source-access digests, retire access, and stop the source.
+   Incorrect/stale approvals must create no source roles; unreviewed privacy must not
+   activate a baseline. A synthetic sensitive marker must stay in the source, disappear
+   from copied artifacts/target, and temporary source privileges must remain restricted.
 6. Restore into an isolated target, review an actual new migration, and run the ordinary
    application proofs through the default styled wizard. First decline the migration and
    independently prove its index remains absent; then approve the displayed candidate set.
@@ -44,6 +49,7 @@ only those synthetic rows; it is not a declaration that real patrons' loan data 
 The prepared profiles separately cover owner scoping, UUID pseudonyms, and private assets.
 
 Reports include `initial-guidance.json`, `developer-review.json`, and acceptance verdicts.
+Source/schema/diagnostic evidence follows [the source/privacy contract](source-privacy-onboarding.md).
 Each terminal session also records observed prompts, sent keystrokes, exit status, and a
 readable transcript. The driver waits for prompts instead of sending a prerecorded stream
 of answers, and terminates stalled sessions with retained failure evidence.

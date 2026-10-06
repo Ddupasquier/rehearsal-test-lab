@@ -28,6 +28,16 @@ import {
   exerciseGuidedRefusal,
 } from "./adoption/interactive.mts";
 import { rm } from "node:fs/promises";
+import {
+  verifyReviewedSchema,
+  assessSourceHandoff,
+  assertCanaryAbsent,
+  assessReviewDiagnostics,
+} from "./adoption/source-review.mts";
+import type {
+  SchemaColumn,
+  SchemaForeignKey,
+} from "./adoption/source-review.mts";
 
 const requested = process.argv[2];
 if (requested === "--help" || requested === "-h") {
@@ -112,6 +122,7 @@ const digest = (value: Record<string, unknown>) =>
 const sql = async <T extends import("pg").QueryResultRow>(
   url: string,
   query: string,
+  values: unknown[] = [],
 ) => {
   const pg = createRequire(resolve(project, "package.json"))(
     "pg",
@@ -119,11 +130,45 @@ const sql = async <T extends import("pg").QueryResultRow>(
   const client = new pg.Client({ connectionString: url });
   await client.connect();
   try {
-    return (await client.query<T>(query)).rows;
+    return (await client.query<T>(query, values)).rows;
   } finally {
     await client.end();
   }
 };
+const expectRefusal = (
+  operation: () => unknown,
+  expected: RegExp,
+  label: string,
+) => {
+  let rejected: unknown;
+  try {
+    operation();
+  } catch (error) {
+    rejected = error;
+  }
+  assert.ok(
+    rejected instanceof CommandError,
+    `${label} must be refused by the public CLI`,
+  );
+  const response = parseJsonOutput(rejected.output, label);
+  assert.equal(response.status, "error");
+  const detail = requireObject(response.error, `${label} diagnostic`);
+  assert.match(requireString(detail.message, `${label} message`), expected);
+  return {
+    code: requireString(detail.code, `${label} code`),
+    message: detail.message,
+    suggestions: detail.suggestions ?? [],
+  };
+};
+const sourceAccessObjects = async () =>
+  (
+    await sql<{ roles: number; schemas: number }>(
+      sourceUrl,
+      `select
+  (select count(*)::integer from pg_roles where rolname in ('library_reader','library_reader_owner')) as roles,
+  (select count(*)::integer from pg_namespace where nspname='library_export') as schemas`,
+    )
+  )[0]!;
 const stopApp = async () => {
   if (!app || app.exitCode !== null) return;
   const closed = new Promise<void>((done) => app!.once("close", () => done()));
@@ -383,30 +428,206 @@ try {
     exerciseInteractiveSetup(project, directory),
   );
   await reporter.runStage(stages[4]!, async () => {
+    const columns = await sql<SchemaColumn>(
+      sourceUrl,
+      `select table_schema as schema_name, table_name, column_name, data_type,
+      is_identity as identity, is_generated as generated from information_schema.columns
+      where table_schema='public' order by table_name, ordinal_position`,
+    );
+    const foreignKeys = await sql<SchemaForeignKey>(
+      sourceUrl,
+      `select ns.nspname as schema_name, t.relname as table_name, a.attname as column_name,
+      rn.nspname as referenced_schema, rt.relname as referenced_table, ra.attname as referenced_column
+      from pg_constraint fk join pg_class t on t.oid=fk.conrelid join pg_namespace ns on ns.oid=t.relnamespace
+      join pg_class rt on rt.oid=fk.confrelid join pg_namespace rn on rn.oid=rt.relnamespace
+      cross join lateral unnest(fk.conkey,fk.confkey) as pair(source_id,target_id)
+      join pg_attribute a on a.attrelid=t.oid and a.attnum=pair.source_id
+      join pg_attribute ra on ra.attrelid=rt.oid and ra.attnum=pair.target_id
+      where fk.contype='f' and ns.nspname='public' order by t.relname,a.attname`,
+    );
     const review = await reviewGeneratedSetup(project, base, targetId);
     configured = true;
+    const source = JSON.parse(
+      await readFile(
+        resolve(project, "infrastructure/rehearsal/source-access-policy.json"),
+        "utf8",
+      ),
+    );
+    const privacy = JSON.parse(
+      await readFile(
+        resolve(project, "infrastructure/rehearsal/sanitization-policy.json"),
+        "utf8",
+      ),
+    );
+    const schemaReview = verifyReviewedSchema(
+      columns,
+      foreignKeys,
+      source,
+      privacy,
+    );
+    const terminal = requireObject(
+      JSON.parse(
+        await readFile(
+          resolve(directory, "terminal-invalid-inputs.json"),
+          "utf8",
+        ),
+      ),
+      "Observed wizard",
+    );
+    const handoff = assessSourceHandoff(
+      requireString(terminal.transcript, "Observed transcript"),
+    );
+    await writeFile(
+      resolve(directory, "schema-review-evidence.json"),
+      `${JSON.stringify({ columns, foreignKeys, ...schemaReview, containsRowValues: false }, null, 2)}\n`,
+    );
+    await writeFile(
+      resolve(directory, "source-onboarding-assessment.json"),
+      `${JSON.stringify(handoff, null, 2)}\n`,
+    );
     await writeFile(
       resolve(directory, "developer-review.json"),
       `${JSON.stringify(review, null, 2)}\n`,
     );
-    return { reviewed: true, ...review };
+    return {
+      reviewed: true,
+      ...review,
+      schemaReview,
+      sourceWizardHandoff: handoff.status,
+    };
   });
   await reporter.runStage(stages[5]!, async () => {
     cli(["privacy", "key", "--write"]);
+    const canary = `LIBRARY_PRIVATE_REVIEW_CANARY_${runId}`;
+    await sql(sourceUrl, "update public.loans set reader_label=$1 where id=1", [
+      canary,
+    ]);
+    assert.deepEqual(await sourceAccessObjects(), { roles: 0, schemas: 0 });
     const plan = data(cli(["source", "plan"], true), "Source review");
+    const invalidApproval = expectRefusal(
+      () =>
+        cli(
+          ["source", "apply", `--confirm-source-access=${"0".repeat(64)}`],
+          true,
+        ),
+      /confirm|digest/iu,
+      "Incorrect source approval",
+    );
+    assert.deepEqual(await sourceAccessObjects(), { roles: 0, schemas: 0 });
+    const sourcePath = resolve(
+      project,
+      "infrastructure/rehearsal/source-access-policy.json",
+    );
+    const sourceBytes = await readFile(sourcePath, "utf8");
+    const changed = requireObject(JSON.parse(sourceBytes), "Source policy");
+    requireObject(changed.reader, "Reader review").validForMinutes = 31;
+    let staleApproval;
+    try {
+      await writeFile(sourcePath, `${JSON.stringify(changed, null, 2)}\n`);
+      staleApproval = expectRefusal(
+        () =>
+          cli(
+            [
+              "source",
+              "apply",
+              `--confirm-source-access=${requireString(plan.digest, "Original source digest")}`,
+            ],
+            true,
+          ),
+        /confirm|digest/iu,
+        "Stale source approval",
+      );
+      assert.deepEqual(await sourceAccessObjects(), { roles: 0, schemas: 0 });
+    } finally {
+      await writeFile(sourcePath, sourceBytes);
+    }
+    const freshPlan = data(
+      cli(["source", "plan"], true),
+      "Fresh source review",
+    );
     retirementPending = true;
     cli(
       [
         "source",
         "apply",
-        `--confirm-source-access=${requireString(plan.digest, "Source digest")}`,
+        `--confirm-source-access=${requireString(freshPlan.digest, "Source digest")}`,
       ],
       true,
     );
+    const readerPrivileges = (
+      await sql<{
+        superuser: boolean;
+        create_database: boolean;
+        create_role: boolean;
+        create_public_objects: boolean;
+        read_raw_loans: boolean;
+        write_books: boolean;
+        read_approved_view: boolean;
+      }>(
+        sourceUrl,
+        `select rolsuper as superuser, rolcreatedb as create_database, rolcreaterole as create_role,
+      has_schema_privilege(rolname,'public','CREATE') as create_public_objects,
+      has_any_column_privilege(rolname,'public.loans','SELECT') as read_raw_loans,
+      (has_table_privilege(rolname,'public.books','INSERT') or has_table_privilege(rolname,'public.books','UPDATE')
+       or has_table_privilege(rolname,'public.books','DELETE') or has_table_privilege(rolname,'public.books','TRUNCATE')) as write_books,
+      has_table_privilege(rolname,'library_export.books','SELECT') as read_approved_view
+      from pg_roles where rolname='library_reader'`,
+      )
+    )[0];
+    assert.deepEqual(
+      readerPrivileges,
+      {
+        superuser: false,
+        create_database: false,
+        create_role: false,
+        create_public_objects: false,
+        read_raw_loans: false,
+        write_books: false,
+        read_approved_view: true,
+      },
+      "Temporary reader privileges must be limited to the reviewed export views",
+    );
+    const privacyPath = resolve(
+      project,
+      "infrastructure/rehearsal/sanitization-policy.json",
+    );
+    const privacyBytes = await readFile(privacyPath, "utf8");
+    const draft = requireObject(JSON.parse(privacyBytes), "Privacy decisions");
+    draft.draft = true;
+    let unreviewedPrivacy;
+    try {
+      await writeFile(privacyPath, `${JSON.stringify(draft, null, 2)}\n`);
+      unreviewedPrivacy = expectRefusal(
+        () => cli(["baseline", "refresh"], true),
+        /draft|review/iu,
+        "Unreviewed privacy export",
+      );
+      await assert.rejects(
+        readFile(resolve(project, ".rehearsal/current/baseline-manifest.json")),
+        { code: "ENOENT" },
+      );
+      await assertCanaryAbsent(resolve(project, ".rehearsal"), canary);
+    } finally {
+      await writeFile(privacyPath, privacyBytes);
+    }
     const baseline = data(cli(["baseline", "refresh"], true), "Baseline");
     assert.equal(
       requireObject(baseline.manifest, "Baseline manifest").rowCount,
       3,
+    );
+    const checkedArtifactFiles = await assertCanaryAbsent(
+      resolve(project, ".rehearsal"),
+      canary,
+    );
+    assert.equal(
+      (
+        await sql<{ reader_label: string }>(
+          sourceUrl,
+          "select reader_label from public.loans where id=1",
+        )
+      )[0]?.reader_label,
+      canary,
+      "Sanitization must preserve the original source value",
     );
     cli(
       [
@@ -417,11 +638,35 @@ try {
       true,
     );
     retirementPending = false;
+    assert.deepEqual(
+      await sourceAccessObjects(),
+      { roles: 0, schemas: 0 },
+      "Retirement must remove temporary source roles and views",
+    );
+    await assert.rejects(
+      readFile(resolve(project, ".rehearsal/secrets/source-reader.env")),
+      { code: "ENOENT" },
+    );
+    await writeFile(
+      resolve(directory, "source-privacy-guardrails.json"),
+      `${JSON.stringify({ invalidApproval, staleApproval, unreviewedPrivacy, readerPrivileges, diagnosticAssessment: assessReviewDiagnostics([invalidApproval, staleApproval!, unreviewedPrivacy!]), checkedArtifactFiles, sourceValuePreserved: true, sensitiveMarkerAbsent: true, sourceAccessRetired: true }, null, 2)}\n`,
+    );
     runCommand("docker", ["stop", sourceName]);
     return {
       baselineRows: 3,
       sourceAccessRetired: true,
+      readerPrivileges,
+      diagnosticAssessment: assessReviewDiagnostics([
+        invalidApproval,
+        staleApproval!,
+        unreviewedPrivacy!,
+      ]),
       sourceStoppedBeforeTarget: true,
+      invalidAndStaleApprovalsRefused: true,
+      unreviewedPrivacyExportRefused: true,
+      sensitiveMarkerAbsent: true,
+      sourceValuePreserved: true,
+      temporaryRolesAndCredentialRemoved: true,
     };
   });
   await reporter.runStage(stages[6]!, async () => {
