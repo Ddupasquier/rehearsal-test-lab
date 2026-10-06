@@ -22,6 +22,11 @@ import {
   errorMessage,
 } from "./shared/validation.mts";
 import { reviewGeneratedSetup } from "./adoption/review.mts";
+import {
+  exerciseInteractiveSetup,
+  exerciseGuidedRun,
+  exerciseGuidedRefusal,
+} from "./adoption/interactive.mts";
 import { rm } from "node:fs/promises";
 
 const requested = process.argv[2];
@@ -69,6 +74,7 @@ const stages = [
   "Inspect exact package",
   "Prove an ordinary app before adoption",
   "Install and inspect public setup guidance",
+  "Exercise real-terminal onboarding, mistakes, and cancellation",
   "Review generated declarations",
   "Prepare and retire scoped source access",
   "Restore and rehearse the ordinary app",
@@ -373,7 +379,10 @@ try {
       incompleteSetupRecognized: true,
     };
   });
-  await reporter.runStage(stages[3]!, async () => {
+  await reporter.runStage(stages[3]!, () =>
+    exerciseInteractiveSetup(project, directory),
+  );
+  await reporter.runStage(stages[4]!, async () => {
     const review = await reviewGeneratedSetup(project, base, targetId);
     configured = true;
     await writeFile(
@@ -382,7 +391,7 @@ try {
     );
     return { reviewed: true, ...review };
   });
-  await reporter.runStage(stages[4]!, async () => {
+  await reporter.runStage(stages[5]!, async () => {
     cli(["privacy", "key", "--write"]);
     const plan = data(cli(["source", "plan"], true), "Source review");
     retirementPending = true;
@@ -415,7 +424,7 @@ try {
       sourceStoppedBeforeTarget: true,
     };
   });
-  await reporter.runStage(stages[5]!, async () => {
+  await reporter.runStage(stages[6]!, async () => {
     await writeFile(
       resolve(
         project,
@@ -427,14 +436,31 @@ try {
     cli(["reset"]);
     const candidates = data(cli(["candidates"]), "Candidate review");
     assert.equal(candidates.candidateCount, 1);
-    const run = parseJsonOutput(
-      cli([
-        "run",
-        `--confirm-candidates=${requireString(candidates.candidateSha256, "Migration digest")}`,
-      ]).stdout,
-      "Rehearsal run",
+    const refused = await exerciseGuidedRefusal(project, directory);
+    assert.equal(
+      data(cli(["candidates"]), "Candidates after refusal").candidateCount,
+      1,
     );
-    assert.equal(run.status, "success");
+    const runtimeEnvironment = await readFile(
+      resolve(project, ".rehearsal/runtime.env"),
+      "utf8",
+    );
+    const runtimeUrl = /^DATABASE_URL=(.+)$/mu
+      .exec(runtimeEnvironment)?.[1]
+      ?.trim()
+      .replace(/^['"]|['"]$/gu, "");
+    assert.ok(runtimeUrl);
+    assert.equal(
+      (
+        await sql<{ count: number }>(
+          runtimeUrl,
+          "select count(*)::integer as count from pg_indexes where schemaname='public' and indexname='library_active_loans'",
+        )
+      )[0]?.count,
+      0,
+      "Declining the wizard must not apply the migration",
+    );
+    const guidedRun = await exerciseGuidedRun(project, directory);
     assert.equal(
       parseJsonOutput(cli(["verify"]).stdout, "Verification").status,
       "success",
@@ -443,9 +469,11 @@ try {
       ordinaryApplicationReused: true,
       applicationProofsPassed: true,
       confirmedCandidateMigrations: 1,
+      ...guidedRun,
+      ...refused,
     };
   });
-  await reporter.runStage(stages[6]!, async () => {
+  await reporter.runStage(stages[7]!, async () => {
     // Read the generated environment rather than assuming a runtime password.
     const environment = await readFile(
       resolve(project, ".rehearsal/runtime.env"),

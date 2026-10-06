@@ -192,7 +192,7 @@ export async function reviewGeneratedSetup(
       "Replace reader labels while retaining catalog and loan relationships",
     ],
     limitations:
-      "Automated public CLI adoption; does not simulate a human interactive wizard or hosted production data.",
+      "Source/privacy declarations require explicit review outside the wizard. Terminal setup/run are verified separately through a real PTY; browser usability, human user studies, and hosted data are not covered.",
   };
   return review;
 }

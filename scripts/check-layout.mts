@@ -14,6 +14,8 @@ const requiredFiles = [
   "scripts/verify-adoption.mts",
   "scripts/verify-adoption-worker.mts",
   "scripts/adoption/review.mts",
+  "scripts/adoption/interactive.mts",
+  "scripts/adoption/terminal-driver.py",
   "docs/new-user-adoption.md",
   "projects/library/package.json",
   "projects/library/package-lock.json",

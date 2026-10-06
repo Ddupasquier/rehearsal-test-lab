@@ -34,7 +34,7 @@ must not depend on another provider being available.
 
 ## First check
 
-Use Node.js 22, 24, or 26 and Docker or another Docker-compatible engine. The additional
+Use Node.js 22, 24, or 26, Python 3.9+ on macOS/Linux for terminal tests, and Docker or another Docker-compatible engine. The additional
 Supabase regression profile also requires Supabase CLI 2.117.0 or newer.
 
 ```bash
@@ -60,8 +60,11 @@ Independent database assertions verify sanitization and the applied index.
 
 The original app remains clean. Reports, initial guidance, and developer review decisions
 live under `test-results/adoption/`. No BlendCalc dependency or source access is involved.
-The guide is exercised through reproducible public CLI commands; human interactive-wizard
-and browser usability remain separate checks. Read [the adoption contract](docs/new-user-adoption.md).
+The guide is exercised in real pseudo-terminals: numbered-input recovery, missing-file
+guidance, styled cancellation, declined and approved setup, and a styled rehearsal with
+explicit migration confirmation. Source-access and privacy review remain explicit steps
+outside the wizard. Browser usability and human user studies are separate checks.
+Read [the adoption contract](docs/new-user-adoption.md).
 
 Candidate and upgrade acceptance run this primary scenario first, followed by the additional
 profiles. GitHub's published-adoption job also runs it against the published beta.
