@@ -122,7 +122,8 @@ npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
 
 It verifies the artifact checksum and installed bytes, fresh onboarding, both complete
 database lifecycles, one exact-digest candidate migration per database, application
-proofs, exact-confirmation cleanup, and preservation of unrelated Docker resources. It
+proofs, numeric identity correspondence between values and canonical integer dictionary
+keys, exact-confirmation cleanup, and preservation of unrelated Docker resources. It
 writes a readable Markdown report and a machine-readable JSON report below
 `test-results/candidate-acceptance/`.
 

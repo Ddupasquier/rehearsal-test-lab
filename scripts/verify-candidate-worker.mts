@@ -87,6 +87,7 @@ const baseStages = [
   "Exercise Supabase target and application",
   "Clean Supabase runtime safely",
   "Prove unrelated Docker resources survived",
+  "Verify numeric identity correspondence",
 ] as const;
 const plannedStages = baseStages.flatMap((name, index) =>
   previousPath && [6, 10].includes(index)
@@ -421,6 +422,124 @@ const cleanupTarget = (target: Target, requireRuntimeRemoval = true) => {
   };
 };
 
+const verifyNumericIdentityCorrespondence = async () => {
+  const project = projects.postgresql;
+  const probe = resolve(project, ".rehearsal-numeric-identity-probe.mjs");
+  const source = `
+import assert from "node:assert/strict";
+import { createPrivacyEngine } from "@rehearsal-db/core/privacy";
+
+const column = (name, action, recipe) => ({
+  name,
+  action,
+  recipe,
+  generated: "NEVER",
+  identity: "NO",
+  foreignKey: null,
+});
+const numberValue = {
+  action: "DERIVE",
+  recipe: {
+    kind: "json-union",
+    maximumItems: 1,
+    maximumDepth: 2,
+    maximumBytes: 64,
+    variants: { number: { action: "KEEP" } },
+  },
+};
+const dictionary = (namespace = "external:food-id") => ({
+  action: "DERIVE",
+  recipe: {
+    kind: "json-dictionary",
+    maximumItems: 4,
+    maximumDepth: 2,
+    maximumBytes: 256,
+    keys: {
+      format: "integer",
+      action: "PSEUDONYMIZE",
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
+      recipe: { format: "integer", namespace },
+    },
+    values: numberValue,
+  },
+});
+const policy = {
+  policyVersion: 2,
+  migrationCutoff: "20261004000100",
+  tables: [{
+    name: "foods",
+    sourceRows: "STREAM AND SANITIZE",
+    columns: [
+      column("food_id", "PSEUDONYMIZE", { format: "integer", namespace: "external:food-id" }),
+      column("state", "DERIVE", {
+        kind: "json-object",
+        fields: {
+          selectedFoodId: { action: "PSEUDONYMIZE", recipe: { format: "integer", namespace: "external:food-id" } },
+          servingGrams: dictionary(),
+          servingQuantities: dictionary(),
+          unrelatedIds: dictionary("external:other-id"),
+        },
+      }),
+    ],
+  }],
+};
+const sanitize = (source, key = Buffer.alloc(32, 7)) => createPrivacyEngine({ policy, key }).sanitize({
+  table: "foods",
+  row: {
+    food_id: source,
+    state: {
+      selectedFoodId: source,
+      servingGrams: { [String(source)]: 100 },
+      servingQuantities: { [String(source)]: 2 },
+      unrelatedIds: { [String(source)]: 1 },
+    },
+  },
+}).row;
+
+for (const source of [203, -1700000000123, 0]) {
+  const first = sanitize(source);
+  const repeated = sanitize(source);
+  const destination = String(first.food_id);
+  assert.deepEqual(first, repeated);
+  assert.equal(first.state.selectedFoodId, first.food_id);
+  assert.equal(Object.hasOwn(first.state.servingGrams, destination), true);
+  assert.equal(Object.hasOwn(first.state.servingQuantities, destination), true);
+  assert.equal(Object.keys(first.state.unrelatedIds).includes(destination), false);
+  assert.notEqual(sanitize(source, Buffer.alloc(32, 8)).food_id, first.food_id);
+}
+
+for (const invalid of ["+203", "0203", "203.0", "2e3", "-0"]) {
+  assert.throws(() => createPrivacyEngine({ policy, key: Buffer.alloc(32, 7) }).sanitize({
+    table: "foods",
+    row: {
+      food_id: 203,
+      state: {
+        selectedFoodId: 203,
+        servingGrams: { [invalid]: 100 },
+        servingQuantities: { 203: 2 },
+        unrelatedIds: { 203: 1 },
+      },
+    },
+  }), /invalid integer key|outside the reviewed range/u);
+}
+
+console.log(JSON.stringify({ status: "passed", identities: 3, invalidKeysRefused: 5 }));
+`;
+  try {
+    await writeFile(probe, source);
+    const result = runCommand(process.execPath, [probe], { cwd: project });
+    const parsed = parseJsonOutput(
+      result.stdout,
+      "Numeric identity correspondence",
+    );
+    assert.equal(parsed.status, "passed");
+    return parsed;
+  } finally {
+    await rm(probe, { force: true });
+  }
+};
+
 const startSupabaseSource = () => {
   const failures = [];
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -590,6 +709,7 @@ try {
     if (!sentinel) throw new Error("Docker sentinel was not created.");
     return sentinel.verify();
   });
+  await runStage(baseStages[13], verifyNumericIdentityCorrespondence);
 } catch (error) {
   failure = error;
 } finally {
