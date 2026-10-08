@@ -9,7 +9,10 @@ import {
 
 type ResourceType = "container" | "network" | "volume";
 
-export function createDockerSentinel(runId?: string) {
+export function createDockerSentinel(
+  runId?: string,
+  command: typeof runCommand = runCommand,
+) {
   const suffix = runId ?? randomUUID().slice(0, 8);
   if (!/^[a-z0-9-]{1,40}$/u.test(suffix))
     throw new Error("Invalid Docker sentinel run identity.");
@@ -22,7 +25,7 @@ export function createDockerSentinel(runId?: string) {
   const created: string[][] = [];
   let identities;
   try {
-    runCommand("docker", [
+    command("docker", [
       "network",
       "create",
       "--label",
@@ -30,9 +33,9 @@ export function createDockerSentinel(runId?: string) {
       names.network,
     ]);
     created.push(["network", "rm", names.network]);
-    runCommand("docker", ["volume", "create", "--label", label, names.volume]);
+    command("docker", ["volume", "create", "--label", label, names.volume]);
     created.push(["volume", "rm", names.volume]);
-    runCommand("docker", [
+    command("docker", [
       "create",
       "--name",
       names.container,
@@ -45,16 +48,16 @@ export function createDockerSentinel(runId?: string) {
       "postgres:17-alpine",
       "true",
     ]);
-    created.push(["rm", names.container]);
+    created.push(["rm", "--volumes", names.container]);
     identities = {
-      container: inspect("container", names.container),
-      network: inspect("network", names.network),
-      volume: inspect("volume", names.volume),
+      container: inspect("container", names.container, command),
+      network: inspect("network", names.network, command),
+      volume: inspect("volume", names.volume, command),
     };
   } catch (error) {
     for (const args of created.reverse()) {
       try {
-        runCommand("docker", args);
+        command("docker", args);
       } catch {
         // Preserve the original creation failure; every name is unique and labeled.
       }
@@ -67,7 +70,7 @@ export function createDockerSentinel(runId?: string) {
     identities,
     verify() {
       for (const type of ["container", "network", "volume"] as const) {
-        if (inspect(type, names[type]) !== identities[type]) {
+        if (inspect(type, names[type], command) !== identities[type]) {
           throw new Error(`Unrelated Docker ${type} ${names[type]} changed.`);
         }
       }
@@ -76,13 +79,13 @@ export function createDockerSentinel(runId?: string) {
     remove() {
       const failures = [];
       const operations: [ResourceType, string[]][] = [
-        ["container", ["rm", names.container]],
+        ["container", ["rm", "--volumes", names.container]],
         ["network", ["network", "rm", names.network]],
         ["volume", ["volume", "rm", names.volume]],
       ];
       for (const [type, args] of operations) {
         try {
-          runCommand("docker", args);
+          command("docker", args);
         } catch (error) {
           failures.push(`${type}: ${errorMessage(error)}`);
         }
@@ -92,9 +95,13 @@ export function createDockerSentinel(runId?: string) {
   };
 }
 
-function inspect(type: ResourceType, name: string) {
+function inspect(
+  type: ResourceType,
+  name: string,
+  command: typeof runCommand = runCommand,
+) {
   const noun = type === "container" ? "container" : type;
-  const { stdout } = runCommand("docker", [noun, "inspect", name]);
+  const { stdout } = command("docker", [noun, "inspect", name]);
   const details = requireObject(
     requireArray(JSON.parse(stdout), "Docker inspection")[0],
     "Docker resource",
