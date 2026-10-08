@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
 import test from "node:test";
+import { createDockerSentinel } from "../scripts/candidate/docker-sentinel.mts";
 import {
   acquirePortLease,
   acquireHeavyLease,
@@ -41,6 +42,39 @@ test("successful workspace cleanup removes immutable baselines without following
   assert.equal(
     await readFile(resolve(outside, "sentinel"), "utf8"),
     "untouched",
+  );
+});
+
+test("Docker sentinel cleanup removes image-declared anonymous volumes", () => {
+  const calls: string[][] = [];
+  const command = (_name: string, args: readonly string[] = []) => {
+    calls.push([...args]);
+    if (args[1] === "inspect") {
+      const type = args[0];
+      const resource =
+        type === "volume"
+          ? { Name: args[2], Mountpoint: `/volumes/${args[2]}` }
+          : { Id: `${type}-identity` };
+      return {
+        stdout: JSON.stringify([resource]),
+        stderr: "",
+        output: "",
+      };
+    }
+    return { stdout: "", stderr: "", output: "" };
+  };
+  const sentinel = createDockerSentinel(
+    "anonymous-volume-cleanup",
+    command as typeof import("../scripts/candidate/process.mts").runCommand,
+  );
+  sentinel.remove();
+  assert.ok(
+    calls.some(
+      (args) =>
+        args[0] === "rm" &&
+        args[1] === "--volumes" &&
+        args[2] === sentinel.names.container,
+    ),
   );
 });
 
