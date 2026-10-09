@@ -118,6 +118,60 @@ export function isolationBindings(
 }
 export type IsolationBindings = ReturnType<typeof isolationBindings>;
 
+const processIsAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH")
+      return false;
+    throw error;
+  }
+};
+
+export function ownedWorkspaceProcessIds(
+  workspace: string,
+  processList: string,
+): number[] {
+  const exactWorkspace = resolve(workspace);
+  return processList
+    .split("\n")
+    .map((line) => line.match(/^\s*(\d+)\s+(.+)$/u))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .filter((match) =>
+      match[2]!.includes(`${exactWorkspace}/`),
+    )
+    .map((match) => Number(match[1]))
+    .filter(
+      (pid) => Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid,
+    );
+}
+
+export async function reapOwnedWorkspaceProcesses(
+  workspace: string,
+): Promise<readonly number[]> {
+  if (process.platform === "win32") return Object.freeze([]);
+  const processList = runCommand("ps", ["-axo", "pid=,command="]).stdout;
+  const owned = ownedWorkspaceProcessIds(workspace, processList);
+  for (const pid of owned) {
+    if (processIsAlive(pid)) process.kill(pid, "SIGTERM");
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (owned.every((pid) => !processIsAlive(pid))) return Object.freeze(owned);
+    await delay(100);
+  }
+  for (const pid of owned) {
+    if (processIsAlive(pid)) process.kill(pid, "SIGKILL");
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (owned.every((pid) => !processIsAlive(pid))) return Object.freeze(owned);
+    await delay(100);
+  }
+  throw new Error(
+    `Failed to stop workspace-owned processes: ${owned.filter(processIsAlive).join(", ")}`,
+  );
+}
+
 export async function removeWorkspace(workspace: string) {
   const unlock = async (path: string): Promise<void> => {
     const entry = await lstat(path);
