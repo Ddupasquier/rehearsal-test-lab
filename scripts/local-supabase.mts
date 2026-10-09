@@ -6,8 +6,10 @@ export const supabaseProject = resolve(root, "projects/supabase");
 
 export interface LocalSupabaseEnvironment {
   API_URL: string;
+  PUBLISHABLE_KEY: string;
   SERVICE_ROLE_KEY: string;
   DB_URL: string;
+  INBUCKET_URL?: string;
 }
 
 export function localSupabaseEnvironment(): LocalSupabaseEnvironment {
@@ -31,6 +33,7 @@ export function localSupabaseEnvironment(): LocalSupabaseEnvironment {
 
   if (
     !environment.API_URL ||
+    !(environment.PUBLISHABLE_KEY || environment.ANON_KEY) ||
     !environment.SERVICE_ROLE_KEY ||
     !environment.DB_URL
   ) {
@@ -40,8 +43,12 @@ export function localSupabaseEnvironment(): LocalSupabaseEnvironment {
   }
   return {
     API_URL: environment.API_URL,
+    PUBLISHABLE_KEY: environment.PUBLISHABLE_KEY ?? environment.ANON_KEY!,
     SERVICE_ROLE_KEY: environment.SERVICE_ROLE_KEY,
     DB_URL: environment.DB_URL,
+    ...(environment.INBUCKET_URL
+      ? { INBUCKET_URL: environment.INBUCKET_URL }
+      : {}),
   };
 }
 

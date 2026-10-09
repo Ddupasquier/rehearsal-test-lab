@@ -31,12 +31,13 @@ port = 58343
 api_url = "http://127.0.0.1"
 
 [local_smtp]
-enabled = false
+enabled = true
 port = 58344
 
 [auth]
 enabled = true
 site_url = "http://localhost:5175"
+additional_redirect_urls = ["http://localhost:5175/**", "http://127.0.0.1:5175/**"]
 enable_signup = false
 
 [storage]

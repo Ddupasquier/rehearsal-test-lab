@@ -93,6 +93,7 @@ The project-specific guides contain exact commands:
 - [Supabase consumer](projects/supabase/README.md)
 - [PostgreSQL consumer](projects/postgresql/README.md)
 - [Complete local runbook](docs/runbook.md)
+- [Authentication acceptance](docs/authentication.md)
 
 For an unpublished Rehearsal candidate, install the exact tarball with `--no-save` in
 the selected consumer directory. Always record its SHA-256 in the acceptance report.
@@ -122,10 +123,16 @@ npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
 
 It verifies the artifact checksum and installed bytes, fresh onboarding, both complete
 database lifecycles, one exact-digest candidate migration per database, application
-proofs, numeric identity correspondence between values and canonical integer dictionary
-keys, exact-confirmation cleanup, and preservation of unrelated Docker resources. It
-writes a readable Markdown report and a machine-readable JSON report below
+proofs, a guided copied-account connection through a synthetic GitHub identity, numeric
+identity correspondence between values and canonical integer dictionary keys,
+exact-confirmation cleanup, and preservation of unrelated Docker resources. It writes a
+readable Markdown report and a machine-readable JSON report below
 `test-results/candidate-acceptance/`.
+
+The guided identity scenario uses only generated local credentials. It independently
+checks the lab's unrelated schemas, exact Storage bytes, idempotent reconnection,
+database-restart persistence, and reset invalidation. It is not evidence of a human
+completing a real hosted-provider consent screen.
 
 Each run snapshots the lab and exact tarball into its own workspace. Package installs,
 privacy keys, baselines, migrations, Docker identities, and ports are independent of your

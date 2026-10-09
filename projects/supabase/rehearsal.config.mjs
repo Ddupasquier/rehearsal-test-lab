@@ -85,7 +85,11 @@ export default defineRehearsalConfig({
     proofCommand: "npm run test:rehearsal",
     environmentFile: ".rehearsal/runtime.env",
     // Map generated local runtime values directly into the normal app command.
-    environmentVariables: { DATABASE_URL: "primary:DATABASE_URL" },
+    environmentVariables: {
+      DATABASE_URL: "primary:DATABASE_URL",
+      SUPABASE_URL: "primary:SUPABASE_URL",
+      SUPABASE_ANON_KEY: "primary:SUPABASE_PUBLISHABLE_KEY",
+    },
     // Required by `rehearsal open`; use a route that responds only when the app is ready.
     readiness: {
       url: "http://localhost:5175/health",

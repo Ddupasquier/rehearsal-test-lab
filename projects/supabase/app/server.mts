@@ -1,14 +1,30 @@
 import { createServer } from "node:http";
 import pg from "pg";
+import { renderAuthPage } from "./auth-page.mts";
 
 const { Client } = pg;
 const port = Number(process.env.PORT ?? 5175);
 const databaseUrl = process.env.DATABASE_URL;
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? "";
 
 if (!databaseUrl) throw new Error("DATABASE_URL is required.");
 
 const server = createServer(async (request, response) => {
-  if (request.url !== "/health" && request.url !== "/summary") {
+  const pathname = new URL(
+    request.url ?? "/",
+    `http://${request.headers.host ?? "localhost"}`,
+  ).pathname;
+  if (pathname === "/" || pathname === "/auth") {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      response.writeHead(503).end("Local authentication is not configured.");
+      return;
+    }
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    response.end(renderAuthPage({ supabaseUrl, anonKey: supabaseAnonKey }));
+    return;
+  }
+  if (pathname !== "/health" && pathname !== "/summary") {
     response.writeHead(404).end("Not found");
     return;
   }
