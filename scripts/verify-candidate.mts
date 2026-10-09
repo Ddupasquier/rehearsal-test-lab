@@ -6,6 +6,7 @@ import {
   acquirePortLease,
   createWorkspace,
   isolationBindings,
+  reapOwnedWorkspaceProcesses,
   removeOwnedResources,
   removeWorkspace,
 } from "./candidate/isolation.mts";
@@ -63,6 +64,7 @@ let exitCode = 1;
 let resourcesMayExist = false;
 let cleanupFailed = false;
 let workspaceCleanupStatus: "retained" | "removed" | "failed" = "retained";
+let reapedProcessIds: readonly number[] = [];
 const errors: string[] = [];
 const startedAt = new Date().toISOString();
 let snapshotSha256: string | undefined;
@@ -147,6 +149,12 @@ try {
 } catch (error) {
   errors.push(errorMessage(error));
 } finally {
+  try {
+    reapedProcessIds = await reapOwnedWorkspaceProcesses(workspace);
+  } catch (error) {
+    cleanupFailed = true;
+    errors.push(errorMessage(error));
+  }
   if (resourcesMayExist) {
     try {
       await removeOwnedResources(workspace, bindings);
@@ -191,6 +199,7 @@ try {
         snapshotSha256,
         workspaceRetained: !passed,
         workspaceCleanupStatus,
+        reapedProcessIds,
         bindings,
         portLease: lease.path,
         portLeaseRetained: cleanupFailed,

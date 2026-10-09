@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import {
   chmod,
   mkdtemp,
@@ -21,7 +22,38 @@ import {
   rewriteFixture,
   removeOwnedResources,
   removeWorkspace,
+  ownedWorkspaceProcessIds,
+  reapOwnedWorkspaceProcesses,
 } from "../scripts/candidate/isolation.mts";
+
+test("workspace process matching is exact and excludes unrelated paths", () => {
+  const workspace = "/tmp/rehearsal-run/workspace";
+  assert.deepEqual(
+    ownedWorkspaceProcessIds(
+      workspace,
+      `  120 node ${workspace}/worker.mjs\n  121 node /tmp/rehearsal-run/workspace-other/worker.mjs\n  122 node /tmp/unrelated.mjs\n`,
+    ),
+    [120],
+  );
+});
+
+test("failed-run cleanup reaps a process launched from its unique workspace", async (context) => {
+  if (process.platform === "win32") return;
+  const directory = await mkdtemp(resolve(tmpdir(), "rtl-process-reap-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const worker = resolve(directory, "owned-worker.mjs");
+  await writeFile(worker, "setInterval(() => {}, 1000);\n");
+  const child = spawn(process.execPath, [worker], { stdio: "ignore" });
+  const exited = new Promise<void>((done) => child.once("exit", () => done()));
+  await new Promise<void>((done, reject) => {
+    child.once("spawn", done);
+    child.once("error", reject);
+  });
+  const reaped = await reapOwnedWorkspaceProcesses(directory);
+  assert.ok(child.pid);
+  assert.ok(reaped.includes(child.pid));
+  await exited;
+});
 
 test("successful workspace cleanup removes immutable baselines without following symlinks", async (context) => {
   const directory = await mkdtemp(resolve(tmpdir(), "rtl-immutable-test-"));
