@@ -67,7 +67,11 @@ outside the wizard. Browser usability and human user studies are separate checks
 Read [the adoption contract](docs/new-user-adoption.md).
 
 Candidate and upgrade acceptance run this primary scenario first, followed by the additional
-profiles. GitHub's published-adoption job also runs it against the published beta.
+profiles. GitHub's published-adoption job also runs it against the package on npm's `beta`
+channel, including release candidates. The complete CI workflow runs after every main-branch
+change and once daily at 16:30 UTC so the release-candidate observation window catches
+registry, installation, compatibility, and PostgreSQL regressions without relying on
+BlendCalc.
 
 ## TypeScript development
 

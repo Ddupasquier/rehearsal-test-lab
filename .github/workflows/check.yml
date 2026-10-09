@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # Daily observation run at 09:30 Pacific during daylight-saving time.
+    - cron: "30 16 * * *"
   workflow_dispatch:
 
 permissions:
@@ -50,7 +53,7 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --ignore-scripts
-      - name: Verify the currently published beta
+      - name: Verify the currently published prerelease channel
         run: |
           tarball="$(npm pack @rehearsal-db/core@beta --silent --pack-destination "$RUNNER_TEMP")"
           npm run adoption:verify -- "$RUNNER_TEMP/$tarball"
