@@ -84,13 +84,14 @@ const baseStages = [
   "Clean PostgreSQL runtime safely",
   "Prepare Supabase source",
   "Refresh Supabase baseline",
+  "Connect a copied account through the guided flow",
   "Exercise Supabase target and application",
   "Clean Supabase runtime safely",
   "Prove unrelated Docker resources survived",
   "Verify numeric identity correspondence",
 ] as const;
 const plannedStages = baseStages.flatMap((name, index) =>
-  previousPath && [6, 10].includes(index)
+  previousPath && [6, 11].includes(index)
     ? [
         name,
         `Upgrade ${index === 6 ? "PostgreSQL" : "Supabase"} consumer and verify preserved state`,
@@ -690,6 +691,19 @@ try {
   });
 
   await runStage(baseStages[10], async () => {
+    const { exerciseGuidedIdentityConnection } =
+      await import("./candidate/guided-identity.mts");
+    const configuration = candidateConfigurations.get(projects.supabase);
+    if (!configuration)
+      throw new Error("Supabase candidate configuration is unavailable.");
+    return exerciseGuidedIdentityConnection({
+      project: projects.supabase,
+      config: configuration.relativePath,
+      applicationUrl: `http://127.0.0.1:${configuration.port}`,
+    });
+  });
+
+  await runStage(baseStages[11], async () => {
     runCommand("npm", ["run", "supabase:stop"], { cwd: root });
     return exerciseTarget("supabase", {
       command: "npm",
@@ -704,12 +718,12 @@ try {
     cwd: root,
   });
 
-  await runStage(baseStages[11], () => cleanupTarget("supabase"));
-  await runStage(baseStages[12], () => {
+  await runStage(baseStages[12], () => cleanupTarget("supabase"));
+  await runStage(baseStages[13], () => {
     if (!sentinel) throw new Error("Docker sentinel was not created.");
     return sentinel.verify();
   });
-  await runStage(baseStages[13], verifyNumericIdentityCorrespondence);
+  await runStage(baseStages[14], verifyNumericIdentityCorrespondence);
 } catch (error) {
   failure = error;
 } finally {

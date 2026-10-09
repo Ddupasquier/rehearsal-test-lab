@@ -7,6 +7,8 @@
     "dev:rehearsal": "node --import tsx app/server.mts",
     "test": "npm run test:rehearsal",
     "test:rehearsal": "node --import tsx app/proof.mts",
+    "auth:doctor": "rehearsal doctor --config=rehearsal.auth.config.mjs",
+    "auth:open": "rehearsal open --config=rehearsal.auth.config.mjs",
     "source:local": "node --import tsx scripts/with-local-source.mts",
     "rehearsal": "rehearsal"
   },

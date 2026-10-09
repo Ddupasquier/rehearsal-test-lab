@@ -7,10 +7,28 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { Script } from "node:vm";
 import { createCandidateConfiguration } from "../scripts/candidate/application-config.mts";
 import { requireObject } from "../scripts/shared/validation.mts";
+import { renderAuthPage } from "../projects/supabase/app/auth-page.mts";
 
 const root = resolve(import.meta.dirname, "..");
+
+test("Supabase auth page emits parseable browser JavaScript without exposing server credentials", () => {
+  const html = renderAuthPage({
+    supabaseUrl: "http://127.0.0.1:58421",
+    anonKey: "synthetic-publishable-key",
+  });
+  const script = /<script>([\s\S]*?)<\/script>/u.exec(html)?.[1];
+  assert.ok(script);
+  assert.doesNotThrow(() => new Script(script));
+  assert.match(html, /synthetic-publishable-key/u);
+  assert.match(html, /localStorage/u);
+  assert.match(html, /otp\?redirect_to=/u);
+  assert.match(html, /token_hash/u);
+  assert.match(html, /request\("\/verify"/u);
+  assert.doesNotMatch(html, /service.role|service_role|secret.key/iu);
+});
 
 function runNode(args: string[], cwd: string, env: NodeJS.ProcessEnv = {}) {
   return new Promise<{ code: number | null; output: string }>(
@@ -90,6 +108,14 @@ for (const target of ["postgresql", "supabase"] as const) {
       const missing = await fetch(`${base}/missing`);
       assert.equal(missing.status, 404);
       assert.equal(await missing.text(), "Not found");
+      if (target === "supabase") {
+        const auth = await fetch(`${base}/auth`);
+        assert.equal(auth.status, 503);
+        assert.equal(
+          await auth.text(),
+          "Local authentication is not configured.",
+        );
+      }
       for (const route of ["/health", "/summary"]) {
         const response = await fetch(`${base}${route}`);
         assert.equal(response.status, 503);
@@ -146,9 +172,15 @@ for (const target of ["postgresql", "supabase"] as const) {
         entries: 10000,
         documents: 2,
       };
-      const server = createServer((_request, response) =>
-        response.end(JSON.stringify(summary)),
-      );
+      let authPage =
+        "Continue with Google Continue with GitHub Sign in with email Send local magic link MFA secrets remain private";
+      const server = createServer((request, response) => {
+        if (target === "supabase" && request.url === "/auth") {
+          response.end(authPage);
+          return;
+        }
+        response.end(JSON.stringify(summary));
+      });
       context.after(
         () =>
           new Promise<void>((resolveClose, reject) =>
@@ -160,6 +192,13 @@ for (const target of ["postgresql", "supabase"] as const) {
       const valid = await runNode([candidate.proofPath], project);
       assert.equal(valid.code, 0, valid.output);
       assert.match(valid.output, /application proof passed/iu);
+      if (target === "supabase") {
+        authPage += " sb_secret_exposed";
+        const leaked = await runNode([candidate.proofPath], project);
+        assert.notEqual(leaked.code, 0);
+        assert.match(leaked.output, /service credential marker/u);
+        authPage = authPage.replace(" sb_secret_exposed", "");
+      }
       summary = { ok: true, accounts: 1, entries: "10000", documents: 2 };
       const invalid = await runNode([candidate.proofPath], project);
       assert.notEqual(invalid.code, 0);

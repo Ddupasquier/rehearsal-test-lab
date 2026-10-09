@@ -41,3 +41,19 @@ The exact source-to-target sequence is documented in the
 [complete local runbook](../../docs/runbook.md). Stop the source after retiring
 temporary access and before restoring the Rehearsal target; this keeps the two Storage
 stacks within the current Colima VM's resource budget.
+
+## Authentication acceptance
+
+The lab application includes `/auth` with four supported local sign-in choices:
+
+- email and password;
+- email magic link through the local SMTP inbox;
+- Google OAuth;
+- GitHub OAuth.
+
+Routine acceptance automatically verifies email/password, token refresh, a magic-link
+request, and a synthetic GitHub identity association. Google and real GitHub consent
+remain optional owner-observed checks because Test Lab never stores provider credentials.
+
+Follow [Authentication acceptance](../../docs/authentication.md) to configure the ignored
+owner-only credential file, register the local callback, and run the human browser check.

@@ -13,7 +13,11 @@
     "supabase:stop": "supabase stop --workdir projects/supabase",
     "supabase:reset": "supabase db reset --workdir projects/supabase",
     "supabase:assets": "node --import tsx scripts/seed-supabase-assets.mts",
+    "supabase:auth:seed": "node --import tsx scripts/seed-supabase-auth.mts",
+    "supabase:auth:source": "node --import tsx scripts/open-source-auth.mts",
     "supabase:verify": "node --import tsx scripts/verify-supabase.mts",
+    "supabase:auth:doctor": "npm --prefix projects/supabase run auth:doctor",
+    "supabase:auth:open": "npm --prefix projects/supabase run auth:open",
     "rehearsal:verify-target": "node --import tsx scripts/verify-rehearsal-target.mts",
     "postgresql:start": "node --import tsx scripts/ensure-postgresql-volume.mts && docker compose -f projects/postgresql/compose.yaml up -d --wait",
     "postgresql:verify": "node --import tsx projects/postgresql/verify.mts",
@@ -30,8 +34,10 @@
   },
   "devDependencies": {
     "@rehearsal-db/core": "0.1.0-beta.16",
+    "@lydell/node-pty": "^1.2.0-beta.15",
     "@types/node": "22.20.5",
     "@types/pg": "^8.16.0",
+    "pg": "^8.23.1",
     "tsx": "^4.20.0",
     "typescript": "7.0.2"
   }
