@@ -45,6 +45,15 @@ run does not prove a new feature that has no scenario yet.
 
 ## Efficient work tiers
 
+Internal task routing and cross-session recovery use the globally installed `dev-task`;
+the [central working-context owner](/Users/dylandupasquier/Development/codex-task-router/docs/working-context.md)
+defines checkpoint commands, storage, and recovery boundaries. Resume from the relevant
+task or exact revision, using a lab-specific task suffix when chats share this worktree.
+Reconcile that historical record with the current checkout, these lab contracts, and the
+existing project tracker. Product documentation, release evidence, and task ownership stay
+here; recovery records neither grant permission nor form a second queue. There is no
+background observer—agents explicitly read and save context as verified state changes.
+
 1. Every change: `npm run check` (compiler, layout/credential checks, independent tests).
 2. During implementation: use the relevant synthetic consumer and focused scenario.
 3. Release candidate: clean library adoption runs first inside `npm run candidate:verify -- /absolute/path/to/candidate.tgz`.
