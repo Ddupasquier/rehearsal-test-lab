@@ -12,7 +12,7 @@
     "rehearsal": "rehearsal"
   },
   "devDependencies": {
-    "@rehearsal-db/core": "beta",
+    "@rehearsal-db/core": "^0.1.0-rc.4",
     "pg": "^8.16.3"
   },
   "engines": {
