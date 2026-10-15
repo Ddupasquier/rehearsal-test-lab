@@ -18,6 +18,9 @@ It remains runnable without Supabase.
 
 For a complete Rehearsal candidate run, install the exact tarball in this directory,
 then follow the [PostgreSQL runbook](../../docs/runbook.md#ordinary-postgresql-lifecycle).
+For a clean manual session with its own ports and data, use the
+[isolated walkthrough](../../docs/manual-postgresql.md) instead. The ordinary application
+now serves a read-only count dashboard at `/`, with JSON at `/summary` and `/health`.
 
 If Docker Compose is unavailable on another machine, use
 `npm run postgresql:fallback:start` and `npm run postgresql:fallback:stop` instead.

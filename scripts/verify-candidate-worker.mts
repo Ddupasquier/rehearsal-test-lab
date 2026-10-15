@@ -19,6 +19,11 @@ import {
   sha256File,
 } from "./candidate/process.mts";
 import { createReporter } from "./candidate/report.mts";
+import { exerciseShapedBaseline } from "./candidate/shape.mts";
+import {
+  exerciseForegroundIdle,
+  supportsForegroundIdle,
+} from "./candidate/idle.mts";
 import type { Artifact, TeardownResult } from "./candidate/report.mts";
 import type { CommandResult } from "./candidate/process.mts";
 import {
@@ -71,6 +76,7 @@ const projects = {
 };
 const candidateConfigurations = new Map<string, CandidateConfiguration>();
 const temporaryMigrationPaths = new Set<string>();
+const temporaryIdlePaths = new Set<string>();
 const previousPath = process.env.LAB_PREVIOUS_ARTIFACT || undefined;
 let previous: Awaited<ReturnType<typeof inspectArtifact>> | undefined;
 const baseStages = [
@@ -90,7 +96,7 @@ const baseStages = [
   "Prove unrelated Docker resources survived",
   "Verify numeric identity correspondence",
 ] as const;
-const plannedStages = baseStages.flatMap((name, index) =>
+const plannedStages: string[] = baseStages.flatMap((name, index) =>
   previousPath && [6, 11].includes(index)
     ? [
         name,
@@ -98,6 +104,14 @@ const plannedStages = baseStages.flatMap((name, index) =>
       ]
     : [name],
 );
+const shapeStages = {
+  postgresql: "Verify bounded PostgreSQL source shape and rollback",
+  supabase: "Verify bounded Supabase source shape and rollback",
+} as const;
+let supportsShape = false;
+let supportsConfigurationReview = false;
+const idleStage =
+  "Verify real foreground idle shutdown and preserved PostgreSQL sandbox";
 
 let artifact: Artifact = {
   sha256: artifactSha256,
@@ -565,6 +579,22 @@ try {
     const inspected = await inspectArtifact(tarball);
     extractedDirectory = inspected.directory;
     artifact = inspected.artifact;
+    const manifest = requireObject(
+      JSON.parse(
+        await readFile(
+          resolve(inspected.directory, "package/package.json"),
+          "utf8",
+        ),
+      ),
+      "Candidate manifest",
+    );
+    const contracts = manifest.rehearsalContracts
+      ? requireObject(manifest.rehearsalContracts, "Candidate contracts")
+      : {};
+    supportsShape = !previousPath && contracts?.baselineShape === 1;
+    supportsConfigurationReview = contracts.configurationReview === 1;
+    if (supportsShape)
+      plannedStages.push(shapeStages.postgresql, shapeStages.supabase);
     if (previousPath) {
       previous = await inspectArtifact(previousPath);
       assertSupportedPreviousRelease(previous.artifact.version);
@@ -650,6 +680,19 @@ try {
     await createCandidateMigration("postgresql");
     return { ...baseline, candidateMigrationCreated: true };
   });
+  if (supportsShape)
+    await runStage(shapeStages.postgresql, async () =>
+      exerciseShapedBaseline({
+        target: "postgresql",
+        project: projects.postgresql,
+        configuration: candidateConfigurations.get(projects.postgresql)!
+          .relativePath,
+        startSource: () =>
+          runCommand("npm", ["run", "postgresql:start"], { cwd: root }),
+        stopSource: () =>
+          runCommand("npm", ["run", "postgresql:stop"], { cwd: root }),
+      }),
+    );
 
   await runStage(baseStages[5], () => {
     sentinel = createDockerSentinel(process.env.LAB_RUN_ID);
@@ -671,6 +714,31 @@ try {
     cwd: projects.postgresql,
   });
 
+  if (supportsConfigurationReview) {
+    const project = projects.postgresql;
+    const metadata = json(
+      cli(project, ["configuration"]),
+      "Foreground idle configuration capability",
+    ).data;
+    if (supportsForegroundIdle(metadata)) {
+      plannedStages.push(idleStage);
+      const configuration = candidateConfigurations.get(project)!;
+      await runStage(idleStage, () =>
+        exerciseForegroundIdle({
+          project,
+          configuration: configuration.relativePath,
+          port: configuration.port,
+          runId: requireString(
+            process.env.LAB_RUN_ID,
+            "Isolated idle run identity",
+          ),
+          cli: (args) => cli(project, args),
+          trackTemporaryFile: (path) => temporaryIdlePaths.add(path),
+        }),
+      );
+    }
+  }
+
   await runStage(baseStages[7], () => cleanupTarget("postgresql"));
 
   await runStage(baseStages[8], async () => {
@@ -689,6 +757,18 @@ try {
     await createCandidateMigration("supabase");
     return { ...baseline, candidateMigrationCreated: true };
   });
+  if (supportsShape)
+    await runStage(shapeStages.supabase, async () =>
+      exerciseShapedBaseline({
+        target: "supabase",
+        project: projects.supabase,
+        configuration: candidateConfigurations.get(projects.supabase)!
+          .relativePath,
+        startSource: startSupabaseSource,
+        stopSource: () =>
+          runCommand("npm", ["run", "supabase:stop"], { cwd: root }),
+      }),
+    );
 
   await runStage(baseStages[10], async () => {
     const { exerciseGuidedIdentityConnection } =
@@ -764,6 +844,14 @@ try {
     ],
     ["Release Supabase resource slot", async () => releaseHeavyLease?.()],
     ["Remove Docker sentinel", () => sentinel?.remove()],
+    [
+      "Remove temporary foreground idle fixture",
+      async () => {
+        await Promise.all(
+          [...temporaryIdlePaths].map((path) => rm(path, { force: true })),
+        );
+      },
+    ],
     [
       "Remove temporary application configs",
       async () => {

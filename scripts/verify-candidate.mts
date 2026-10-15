@@ -16,22 +16,24 @@ import {
   sha256File,
 } from "./candidate/process.mts";
 import { errorMessage } from "./shared/validation.mts";
+import { cleanProfileDockerEnvironment, inspectProfileEndpoint } from "./candidate/resource-profiles.mts";
 
 const root = resolve(import.meta.dirname, "..");
 const upgrading = process.argv[2] === "--upgrade";
 const adopting = process.argv[2] === "--adoption";
-const requested = process.argv[upgrading ? 4 : adopting ? 3 : 2];
+const profiling = process.argv[2] === "--resource-profiles";
+const requested = process.argv[upgrading ? 4 : adopting || profiling ? 3 : 2];
 const previousRequested = upgrading ? process.argv[3] : undefined;
 if (!upgrading && (requested === "--help" || requested === "-h")) {
-  console.log(`Usage: npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
+  console.log(`Usage: npm run ${profiling ? "resources:verify" : "candidate:verify"} -- /absolute/path/to/rehearsal-db-core-*.tgz
 
 Snapshots the lab and exact artifact into an independent workspace with dedicated
 ports, Docker identities, and package installs. Supabase phases share a resource
-slot to limit memory use. Reports remain in test-results/candidate-acceptance/.
+slot to limit memory use. Reports remain in test-results/${profiling ? "resource-profiles" : "candidate-acceptance"}/.
 Failed workspaces are retained for diagnosis; successful workspaces are removed.`);
   process.exit(0);
 }
-if (!requested || process.argv.length !== (upgrading ? 5 : adopting ? 4 : 3))
+if (!requested || process.argv.length !== (upgrading ? 5 : adopting || profiling ? 4 : 3))
   throw new Error(
     "Pass one exact candidate tarball: npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz",
   );
@@ -53,7 +55,7 @@ const reportDirectory = resolve(
     ? "test-results/upgrade-acceptance"
     : adopting
       ? "test-results/adoption"
-      : "test-results/candidate-acceptance",
+      : profiling ? "test-results/resource-profiles" : "test-results/candidate-acceptance",
   runId,
 );
 const workspace = resolve(reportDirectory, "workspace");
@@ -68,7 +70,9 @@ let reapedProcessIds: readonly number[] = [];
 const errors: string[] = [];
 const startedAt = new Date().toISOString();
 let snapshotSha256: string | undefined;
+let profileEndpoint: string | undefined;
 try {
+  if (profiling) profileEndpoint = inspectProfileEndpoint();
   const labSnapshot = await createWorkspace(root, workspace, bindings);
   snapshotSha256 = labSnapshot.sha256;
   await writeFile(
@@ -100,7 +104,7 @@ try {
       [
         "--import",
         "tsx",
-        adopting
+        profiling ? "scripts/verify-resource-profiles-worker.mts" : adopting
           ? "scripts/verify-adoption-worker.mts"
           : "scripts/verify-candidate-worker.mts",
         snapshot,
@@ -119,6 +123,7 @@ try {
           LAB_PREVIOUS_ARTIFACT: previousSnapshot ?? "",
           LAB_POSTGRESQL_APP_PORT: String(lease.base + 28),
           LAB_SUPABASE_APP_PORT: String(lease.base + 27),
+          LAB_PROFILE_DOCKER_ENDPOINT: profileEndpoint ?? "",
         },
       },
     );
@@ -157,7 +162,7 @@ try {
   }
   if (resourcesMayExist) {
     try {
-      await removeOwnedResources(workspace, bindings);
+      await removeOwnedResources(workspace, bindings, profiling ? (command, args, options = {}) => runCommand(command, args, { ...options, env: { ...options.env, ...cleanProfileDockerEnvironment(profileEndpoint) } }) : runCommand);
     } catch (error) {
       cleanupFailed = true;
       errors.push(errorMessage(error));

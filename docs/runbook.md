@@ -31,6 +31,13 @@ fails if any required check is skipped or inconclusive. Its Markdown and JSON re
 appear under `test-results/candidate-acceptance/`. Review the report before asking a
 downstream application such as BlendCalc to perform focused consumer-only checks.
 
+When the installed package advertises foreground idle controls, acceptance also exercises
+the explicit activity contract on PostgreSQL: real busy work, a full 30-second quiet
+window, owned application shutdown, and a non-destructive runtime stop. It verifies that
+container/volume identities, database counts and a sandbox edit survive. Missing or
+regressed activity refusal belongs to the core tests; this stage does not claim Google
+consent, browser-user inactivity, or a host-wide background scheduler.
+
 Acceptance now runs in a private snapshot with dedicated installs, resource names, and
 ports. Require both `acceptance.json` and `isolation.json` to pass. The snapshot inventory
 and exact tarball remain with the reports. PostgreSQL work can overlap; heavy Supabase
@@ -38,6 +45,15 @@ phases wait for a shared resource slot. See [Expansion coverage](expansion-cover
 for the feature acceptance contract and recovery instructions.
 
 The remaining steps document the same lifecycle for investigation and manual testing.
+For your own clean hands-on run, start with [Try PostgreSQL yourself](manual-postgresql.md).
+It reserves separate ports and resource identities instead of changing a shared consumer.
+To open a real application's existing dashboard beside the synthetic Lab projects, use
+the optional [consumer workspace](consumer-workspace.md); its data remains consumer-owned.
+For a runtime/service-profile change, also run `npm run resources:verify -- /path/to/candidate.tgz`.
+Require `profiles.json` and `isolation.json` to pass. The profiles run sequentially with
+unique ports and ownership; compare startup and CPU/memory samples on equivalent
+hardware and distinguish any new image downloads. This does not replace application,
+Auth, Storage, or migration acceptance.
 Those manual commands use the shared consumer directories and fixed ports; avoid running
 multiple manual sessions against the same consumer.
 To check onboarding by itself, run this from the lab root before either database
