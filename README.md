@@ -1,6 +1,6 @@
 # Rehearsal Test Lab
 
-This private repository is a clean-room consumer of
+This repository is a clean-room consumer of
 [`@rehearsal-db/core`](https://www.npmjs.com/package/@rehearsal-db/core). It tests
 Rehearsal the way an application developer uses it: through the published or packed
 package and its public CLI.
@@ -98,6 +98,14 @@ The project-specific guides contain exact commands:
 - [PostgreSQL consumer](projects/postgresql/README.md)
 - [Complete local runbook](docs/runbook.md)
 - [Authentication acceptance](docs/authentication.md)
+- [Your own isolated PostgreSQL walkthrough](docs/manual-postgresql.md)
+- [Open a real application alongside Test Lab](docs/consumer-workspace.md)
+
+Every new testing round starts in a fresh isolated workspace. For hands-on testing, use
+the isolated PostgreSQL walkthrough rather than reusing a session or resetting a shared
+Lab project. Its generated guide uses your session's exact ports
+and paths. The optional multi-project workspace links an existing consumer's sandbox;
+it does not copy its data or make ordinary Lab acceptance depend on that application.
 
 For an unpublished Rehearsal candidate, install the exact tarball with `--no-save` in
 the selected consumer directory. Always record its SHA-256 in the acceptance report.
@@ -152,6 +160,21 @@ tarball remain under `test-results/candidate-acceptance/`.
 
 See [Expansion coverage](docs/expansion-coverage.md) for implemented checks, the next
 scenarios, and an acceptance contract for feature owners.
+
+## Runtime resource measurements
+
+```bash
+npm run resources:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
+```
+
+This uses the same isolated workspace, exact-artifact check, port leases, and serial
+Supabase slot as acceptance. It measures fresh PostgreSQL, Supabase `application`, and
+Supabase `full` reset-to-ready times (provisioning, health checks and baseline
+restoration), then three CPU/memory samples for each. The full
+profile explicitly enables its optional services in the disposable template. The
+100-row synthetic fixture is a resource regression signal, not full application or
+provider-login acceptance. Reports and cleanup proof remain under
+`test-results/resource-profiles/`; cached images are not globally pruned.
 
 ## Version upgrade acceptance
 

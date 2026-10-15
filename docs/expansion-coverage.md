@@ -10,18 +10,19 @@ additional coverage. No downstream application defines this lab's architecture o
 
 ## Current coverage and next additions
 
-| Contract             | Implemented coverage                                                                                                                      | Next scenario                                                                         |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Package installation | Exact hash and installed bytes; unsafe archives; fresh onboarding and partial recovery; same-consumer upgrade with preserved state        | Expand verified version pairs as public contracts evolve                              |
-| Source access        | Reviewed scope, pseudonymization, retirement, private asset copy                                                                          | Interrupted refresh must preserve the last valid baseline and retire temporary access |
-| Privacy identity     | Numeric values and canonical signed-integer dictionary keys retain one namespaced mapping across key rotation                             | Add other cross-representation joins when their public contracts land                 |
-| Restore              | PostgreSQL and Supabase, multiple schemas, identities, generated columns, exact asset bytes                                               | Corrupt baseline and interrupted restore must fail without touching the source        |
-| Migration            | One confirmed candidate per provider                                                                                                      | Failing migration; modified candidate after confirmation; explicit retry behavior     |
-| Application          | HTTP readiness and real data proofs; fail closed without database; guided synthetic GitHub account connection and restart/reset behavior  | Multi-target and human hosted-provider observations where separately required         |
-| Authentication       | Local email/password, refresh, reload, sign-out, token-hash magic link, synthetic GitHub identity, and optional human Google/GitHub OAuth | Add another provider only when its reusable configuration contract is reviewed        |
-| Cleanup              | Confirmation-based target removal, ownership refusal, unrelated sentinel preservation                                                     | Interrupt a full run after useful state exists and verify recovery                    |
-| Concurrency          | Independent workspace/install/IDs/port blocks; serialized Supabase phase                                                                  | Repeat paired full runs on shared development machines                                |
-| Performance          | Stage and total durations, package bytes, runner peak RSS                                                                                 | Larger deterministic datasets and measured Docker/child-process memory                |
+| Contract             | Implemented coverage                                                                                                                                                                                                     | Next scenario                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Package installation | Exact hash and installed bytes; unsafe archives; fresh onboarding and partial recovery; same-consumer upgrade with preserved state                                                                                       | Expand verified version pairs as public contracts evolve                                                       |
+| Source access        | Reviewed scope, pseudonymization, retirement, private asset copy                                                                                                                                                         | Interrupted refresh must preserve the last valid baseline and retire temporary access                          |
+| Privacy identity     | Numeric values and canonical signed-integer dictionary keys retain one namespaced mapping across key rotation                                                                                                            | Add other cross-representation joins when their public contracts land                                          |
+| Restore              | PostgreSQL and Supabase, multiple schemas, identities, generated columns, exact asset bytes                                                                                                                              | Corrupt baseline and interrupted restore must fail without touching the source                                 |
+| Migration            | One confirmed candidate per provider                                                                                                                                                                                     | Failing migration; modified candidate after confirmation; explicit retry behavior                              |
+| Application          | HTTP readiness and real data proofs; fail closed without database; guided synthetic GitHub account connection and restart/reset behavior                                                                                 | Multi-target and human hosted-provider observations where separately required                                  |
+| Authentication       | Local email/password, refresh, reload, sign-out, token-hash magic link, synthetic GitHub identity, and optional human Google/GitHub OAuth                                                                                | Add another provider only when its reusable configuration contract is reviewed                                 |
+| Cleanup              | Confirmation-based target removal, ownership refusal, unrelated sentinel preservation                                                                                                                                    | Interrupt a full run after useful state exists and verify recovery                                             |
+| Concurrency          | Independent workspace/install/IDs/port blocks; serialized Supabase phase                                                                                                                                                 | Repeat paired full runs on shared development machines                                                         |
+| Performance          | Stage and total durations, package bytes, runner peak RSS                                                                                                                                                                | Larger deterministic datasets and measured Docker/child-process memory                                         |
+| Opt-in shaping       | A shape-capable candidate adds source-snapshot sampling, measured bucket goals, native restores and independent FK/count checks for both profiles; required-cohort failure preserves the prior baseline and sandbox edit | Joint distributions, generated boundary representatives, and graphs above the advertised bounded-memory limits |
 
 The next-scenario column is a backlog, not a claim that these checks already run.
 The previous manual stale-confirmation and injected-failure investigations should become
@@ -65,6 +66,17 @@ background observer—agents explicitly read and save context as verified state 
 GitHub runs fast checks on Node 22/24/26 plus PostgreSQL, published adoption, and onboarding.
 Unpublished artifacts still require explicit local selection. Heavy Supabase runs stay
 local and serialize; routine work creates no hosted Supabase compute.
+
+For core artifacts advertising `baselineShape: 1`, fresh candidate acceptance includes
+two additional shaping stages. They temporarily select 100 entries plus required parents
+and explicitly bounded supporting rows through public source/refresh commands. Independent
+SQL verifies restored counts, every reviewed foreign key, pseudonymized ownership and
+generated columns. A deliberately impossible privacy-cohort requirement must refuse
+refresh without replacing the sampled baseline or losing a safe sandbox edit. The stages
+then reactivate the original full baseline through the public baseline API, so ordinary
+10,000-entry application/migration proofs remain unchanged. Sources and Supabase targets
+never run together during these checks. Legacy artifacts and same-consumer upgrade runs
+do not claim this opt-in feature was tested.
 
 ## Isolation and recovery
 
