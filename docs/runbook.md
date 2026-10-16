@@ -38,6 +38,13 @@ container/volume identities, database counts and a sandbox edit survive. Missing
 regressed activity refusal belongs to the core tests; this stage does not claim Google
 consent, browser-user inactivity, or a host-wide background scheduler.
 
+Idle diagnostics remain beside the acceptance report in
+`foreground-idle-before-owned-stop.json` and `foreground-idle-after-owned-stop.json`,
+including after temporary fixture cleanup. They retain only bounded synthetic counters,
+public lifecycle phases and completion codes, and local application reachability—not
+raw command output, credentials or database rows. An interrupted timeout stays failed;
+an unavailable diagnostic is unknown, not proof of success.
+
 Acceptance now runs in a private snapshot with dedicated installs, resource names, and
 ports. Require both `acceptance.json` and `isolation.json` to pass. The snapshot inventory
 and exact tarball remain with the reports. PostgreSQL work can overlap; heavy Supabase

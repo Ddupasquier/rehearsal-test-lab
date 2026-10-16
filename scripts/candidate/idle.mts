@@ -1,7 +1,8 @@
 /** Independent foreground acceptance; invokes only the installed public package CLI. */
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { readFile, unlink, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { constants } from "node:fs";
+import { open, readFile, unlink, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { basename, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -161,6 +162,378 @@ export function requireIdleObservations(value: unknown) {
   return result;
 }
 
+const DIAGNOSTIC_PHASES = [
+  "runtime-lifecycle",
+  "dependent-preparation",
+  "application-start",
+  "application-proof",
+  "http-proof",
+  "runtime-verification",
+  "cleanup",
+  "interactive-session",
+  "source-preparation",
+  "identity-association",
+] as const;
+const DIAGNOSTIC_CATEGORIES = [
+  "configuration_invalid",
+  "unsafe_environment",
+  "baseline_invalid",
+  "baseline_checksum_mismatch",
+  "migration_candidate_failure",
+  "migration_verification_failure",
+  "application_proof_failure",
+  "runtime_dependency_failure",
+  "internal_failure",
+  "operation_cancelled",
+] as const;
+const DIAGNOSTIC_EVENTS = [
+  "operation.started",
+  "operation.completed",
+  "operation.failed",
+  "operation.cancelled",
+  "stage.started",
+  "stage.completed",
+  "stage.failed",
+  "stage.cancelled",
+] as const;
+const diagnosticRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+const diagnosticChoice = (value: unknown, choices: readonly string[]) =>
+  typeof value === "string" && choices.includes(value) ? value : null;
+const diagnosticCount = (value: unknown) =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+const diagnosticEnvelope = (source: string) => {
+  if (Buffer.byteLength(source) > 65536) return null;
+  try {
+    const start = source.indexOf("{");
+    const value = diagnosticRecord(JSON.parse(source.slice(start)));
+    return value?.schemaVersion === 1 ? value : null;
+  } catch {
+    return null;
+  }
+};
+const diagnosticErrorCode = (value: unknown) =>
+  diagnosticChoice(value, [
+    ...DIAGNOSTIC_CATEGORIES,
+    ...DIAGNOSTIC_CATEGORIES.map((code) => code.toUpperCase()),
+  ]);
+
+export type IdleDiagnosticCheckpoint =
+  | "awaiting-readiness"
+  | "busy-work"
+  | "quiet-window"
+  | "idle-completion"
+  | "preservation"
+  | "verified";
+
+/** Closed projections only: never retain arbitrary output, error messages or paths. */
+export function projectForegroundIdleDiagnostic({
+  runId,
+  outcome,
+  checkpoint,
+  capture,
+  observations,
+  activityOutput,
+  completionOutput,
+  session,
+  applicationReachable = null,
+  ownedRuntimeRunning = null,
+}: {
+  runId: string;
+  outcome: "passed" | "failed";
+  checkpoint: IdleDiagnosticCheckpoint;
+  capture: "before-owned-stop" | "after-owned-stop";
+  observations: unknown;
+  activityOutput: string;
+  completionOutput: string;
+  applicationReachable?: boolean | null;
+  ownedRuntimeRunning?: boolean | null;
+  session: {
+    ended: boolean;
+    terminationRequested: boolean;
+    outputOverflow: boolean;
+    startupFailed: boolean;
+    ownedStopFailed: boolean;
+    stdoutBytes: number;
+    stderrBytes: number;
+  };
+}) {
+  if (
+    !/^rtl-[a-f0-9]{10}$/u.test(runId) ||
+    !["passed", "failed"].includes(outcome) ||
+    !["before-owned-stop", "after-owned-stop"].includes(capture) ||
+    ![
+      "awaiting-readiness",
+      "busy-work",
+      "quiet-window",
+      "idle-completion",
+      "preservation",
+      "verified",
+    ].includes(checkpoint)
+  )
+    throw new Error("Invalid isolated idle diagnostic identity.");
+  const rawCounters = diagnosticRecord(observations);
+  const counterNames = [
+    "activityReads",
+    "busyReads",
+    "quietReads",
+    "workBegins",
+    "workFinishes",
+    "lastSequence",
+  ] as const;
+  const counters =
+    rawCounters &&
+    counterNames.every((key) => diagnosticCount(rawCounters[key]) !== null)
+      ? Object.fromEntries(
+          counterNames.map((key) => [key, diagnosticCount(rawCounters[key])]),
+        )
+      : null;
+  const activity = diagnosticEnvelope(activityOutput);
+  const activityData =
+    activity?.command === "activity" && activity.status === "success"
+      ? diagnosticRecord(activity.data)
+      : null;
+  const operation = diagnosticRecord(activityData?.operation);
+  const progress = diagnosticRecord(operation?.progress);
+  const stage = diagnosticRecord(progress?.currentStage);
+  const events =
+    progress?.schemaVersion === 1 &&
+    Array.isArray(progress.events) &&
+    progress.events.length <= 40
+      ? progress.events.map((value: unknown) => {
+          const event = diagnosticRecord(value);
+          const code = diagnosticChoice(event?.code, DIAGNOSTIC_EVENTS);
+          const phase =
+            event?.phase === null
+              ? null
+              : diagnosticChoice(event?.phase, DIAGNOSTIC_PHASES);
+          const sequence = diagnosticCount(event?.sequence);
+          return code !== null &&
+            sequence !== null &&
+            sequence > 0 &&
+            (phase !== null || code.startsWith("operation."))
+            ? { sequence, code, phase }
+            : null;
+        })
+      : null;
+  const completion = diagnosticEnvelope(completionOutput);
+  const data = diagnosticRecord(completion?.data);
+  const application = diagnosticRecord(data?.application);
+  const lifecycle = diagnosticRecord(data?.lifecycle);
+  const error = diagnosticRecord(completion?.error);
+  return {
+    schemaVersion: 1 as const,
+    runId,
+    outcome,
+    checkpoint,
+    capture,
+    observations: counters,
+    activity:
+      activityData?.schemaVersion === 1
+        ? {
+            state: diagnosticChoice(activityData.state, [
+              "idle",
+              "busy",
+              "stale",
+              "invalid",
+            ]),
+            progressState:
+              progress?.schemaVersion === 1
+                ? diagnosticChoice(progress.state, [
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                  ])
+                : null,
+            currentPhase:
+              progress?.schemaVersion === 1
+                ? diagnosticChoice(stage?.phase, DIAGNOSTIC_PHASES)
+                : null,
+            elapsedMilliseconds:
+              progress?.schemaVersion === 1
+                ? diagnosticCount(progress.elapsedMilliseconds)
+                : null,
+            events: events?.every((event) => event !== null) ? events : null,
+          }
+        : null,
+    completion: completion
+      ? {
+          status: diagnosticChoice(completion.status, [
+            "success",
+            "not_ready",
+            "error",
+          ]),
+          errorCategory: diagnosticChoice(
+            error?.category,
+            DIAGNOSTIC_CATEGORIES,
+          ),
+          errorCode: diagnosticErrorCode(error?.code),
+          stoppedBy: diagnosticChoice(application?.stoppedBy, [
+            "idle-timeout",
+            "SIGINT",
+            "SIGTERM",
+            "SIGTSTP",
+          ]),
+          closeReason: diagnosticChoice(application?.closeReason, [
+            "idle-timeout",
+            "interrupted",
+          ]),
+          runtimeState: diagnosticChoice(lifecycle?.runtimeState, [
+            "running",
+            "stopped",
+            "unknown",
+          ]),
+        }
+      : null,
+    session: {
+      ended: session.ended === true,
+      terminationRequested: session.terminationRequested === true,
+      outputOverflow: session.outputOverflow === true,
+      startupFailed: session.startupFailed === true,
+      ownedStopFailed: session.ownedStopFailed === true,
+      stdoutBytes: diagnosticCount(session.stdoutBytes),
+      stderrBytes: diagnosticCount(session.stderrBytes),
+    },
+    applicationReachable:
+      typeof applicationReachable === "boolean" ? applicationReachable : null,
+    ownedRuntimeRunning:
+      typeof ownedRuntimeRunning === "boolean" ? ownedRuntimeRunning : null,
+    limitation:
+      "Diagnostic observations do not establish idle acceptance; an interrupted failed run remains failed.",
+  };
+}
+export type ForegroundIdleDiagnostic = ReturnType<
+  typeof projectForegroundIdleDiagnostic
+>;
+
+/** Diagnostic read/write failures must never replace the acceptance failure. */
+export async function preserveForegroundIdleDiagnostic({
+  input,
+  readObservations,
+  readActivity,
+  readHealth,
+  record,
+}: {
+  input: Omit<
+    Parameters<typeof projectForegroundIdleDiagnostic>[0],
+    "observations" | "activityOutput"
+  >;
+  readObservations: () => Promise<unknown>;
+  readActivity: () => string;
+  readHealth?: () => Promise<boolean | null>;
+  record: (diagnostic: ForegroundIdleDiagnostic) => void | Promise<void>;
+}): Promise<boolean> {
+  let observations: unknown = null,
+    activityOutput = "";
+  let applicationReachable: boolean | null = null;
+  try {
+    observations = await readObservations();
+  } catch {
+    /* Unavailable, not a raw error. */
+  }
+  try {
+    activityOutput = readActivity();
+  } catch {
+    /* Unavailable, not a raw error. */
+  }
+  try {
+    applicationReachable = (await readHealth?.()) ?? null;
+  } catch {
+    /* Unknown, not absent. */
+  }
+  try {
+    await record(
+      projectForegroundIdleDiagnostic({
+        ...input,
+        observations,
+        activityOutput,
+        applicationReachable,
+        // No direct Docker query: this diagnostic does not own an engine binding.
+        ownedRuntimeRunning: null,
+      }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Hard diagnostic deadline; an abort-ignoring transport cannot delay cleanup. */
+export async function probeIdleApplicationHealth(
+  port: number,
+  {
+    fetchImplementation = fetch,
+    timeoutMilliseconds = 2000,
+  }: { fetchImplementation?: typeof fetch; timeoutMilliseconds?: number } = {},
+): Promise<boolean | null> {
+  if (
+    !Number.isSafeInteger(port) ||
+    port < 1024 ||
+    port > 65535 ||
+    !Number.isSafeInteger(timeoutMilliseconds) ||
+    timeoutMilliseconds < 1 ||
+    timeoutMilliseconds > 2000
+  )
+    return null;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let expired = false;
+  const request = Promise.resolve()
+    .then(() =>
+      fetchImplementation(`http://127.0.0.1:${port}/health`, {
+        redirect: "error",
+        signal: controller.signal,
+      }),
+    )
+    .then((response) => {
+      try {
+        void response.body?.cancel().catch(() => undefined);
+      } catch {
+        /* No raw transport error. */
+      }
+      return expired ? null : response.status === 200 && !response.redirected;
+    })
+    .catch(() => null);
+  try {
+    return await Promise.race([
+      request,
+      new Promise<null>((done) => {
+        timer = setTimeout(() => {
+          expired = true;
+          controller.abort();
+          done(null);
+        }, timeoutMilliseconds);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    controller.abort();
+  }
+}
+
+export async function readIdleObservationDiagnostic(
+  path: string,
+): Promise<unknown> {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || metadata.size > 4096)
+      throw new Error("Idle observations unavailable within their bound.");
+    const buffer = Buffer.alloc(4097);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > 4096)
+      throw new Error("Idle observations exceed their bound.");
+    return JSON.parse(buffer.subarray(0, bytesRead).toString("utf8"));
+  } finally {
+    await handle.close();
+  }
+}
+
 interface RuntimeIdentity {
   id: string;
   running: boolean;
@@ -267,10 +640,14 @@ function openSession(project: string, configuration: string) {
   );
   let stdout = "",
     bytes = 0,
+    stdoutBytes = 0,
+    stderrBytes = 0,
     overflow = false,
-    ended = false;
+    ended = false,
+    terminationRequested = false;
   child.stdout.on("data", (chunk: Buffer) => {
     bytes += chunk.length;
+    stdoutBytes += chunk.length;
     if (bytes <= 1024 * 1024) stdout += chunk.toString();
     else {
       overflow = true;
@@ -279,6 +656,7 @@ function openSession(project: string, configuration: string) {
   });
   child.stderr.on("data", (chunk: Buffer) => {
     bytes += chunk.length;
+    stderrBytes += chunk.length;
     if (bytes > 1024 * 1024) {
       overflow = true;
       child.kill("SIGINT");
@@ -322,13 +700,20 @@ function openSession(project: string, configuration: string) {
   return {
     ended: () => ended,
     wait,
+    diagnosticSnapshot: () => ({
+      ended,
+      terminationRequested,
+      outputOverflow: overflow,
+      startupFailed: startupError,
+      stdoutBytes,
+      stderrBytes,
+    }),
+    completionOutput: () => stdout,
     failureCode: () => {
       try {
         const envelope = parseJsonOutput(stdout, "Open diagnostic");
         const code = requireObject(envelope.error, "Open failure").code;
-        return typeof code === "string" && /^[A-Z0-9_]{1,100}$/u.test(code)
-          ? code
-          : "unavailable";
+        return diagnosticErrorCode(code) ?? "unavailable";
       } catch {
         return "unavailable";
       }
@@ -341,6 +726,7 @@ function openSession(project: string, configuration: string) {
     },
     stop: async () => {
       if (ended) return;
+      terminationRequested = true;
       child.kill("SIGINT");
       try {
         await wait(15_000);
@@ -391,6 +777,7 @@ export async function exerciseForegroundIdle({
   runId,
   cli,
   trackTemporaryFile,
+  recordDiagnostics = () => undefined,
 }: {
   project: string;
   configuration: string;
@@ -398,6 +785,9 @@ export async function exerciseForegroundIdle({
   runId: string;
   cli: (args: string[]) => CommandResult;
   trackTemporaryFile: (path: string) => void;
+  recordDiagnostics?: (
+    diagnostic: ForegroundIdleDiagnostic,
+  ) => void | Promise<void>;
 }) {
   if (
     !/^rtl-[a-f0-9]{10}$/u.test(runId) ||
@@ -459,6 +849,43 @@ export async function exerciseForegroundIdle({
   assert.equal(stopped.id, original.id);
   assert.deepEqual(stopped.volumes, original.volumes);
   const session = openSession(project, ".rehearsal/candidate-idle.config.mjs");
+  let checkpoint: IdleDiagnosticCheckpoint = "awaiting-readiness";
+  let outcome: "passed" | "failed" = "failed";
+  let primaryFailure = false;
+  let ownedStopFailed = false;
+  const capture = (stage: ForegroundIdleDiagnostic["capture"]) =>
+    preserveForegroundIdleDiagnostic({
+      input: {
+        runId,
+        outcome,
+        checkpoint,
+        capture: stage,
+        completionOutput: session.completionOutput(),
+        session: { ...session.diagnosticSnapshot(), ownedStopFailed },
+      },
+      readObservations: () => readIdleObservationDiagnostic(auditPath),
+      readActivity: () => {
+        const result = spawnSync(
+          resolve(project, "node_modules/.bin/rehearsal"),
+          [
+            "activity",
+            "--config=.rehearsal/candidate-idle.config.mjs",
+            "--json",
+          ],
+          {
+            cwd: project,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 3000,
+            killSignal: "SIGKILL",
+            maxBuffer: 65536,
+          },
+        );
+        return result.status === 0 && !result.error ? result.stdout : "";
+      },
+      readHealth: () => probeIdleApplicationHealth(port),
+      record: recordDiagnostics,
+    });
   try {
     const origin = `http://127.0.0.1:${port}`;
     const readinessDeadline = performance.now() + 60_000;
@@ -492,6 +919,7 @@ export async function exerciseForegroundIdle({
       assert.equal(response.status, 200);
       return requireObject(await response.json(), "Explicit synthetic work");
     };
+    checkpoint = "busy-work";
     assert.equal((await work("begin")).busy, true);
     await delay(12_000);
     assert.equal(
@@ -509,7 +937,9 @@ export async function exerciseForegroundIdle({
     );
     const quietStarted = performance.now();
     assert.equal((await work("finish")).activitySequence, 2);
+    checkpoint = "quiet-window";
     const completed = await session.wait(75_000);
+    checkpoint = "idle-completion";
     const quietElapsedMilliseconds = performance.now() - quietStarted;
     session.assertOutput();
     assert.equal(completed.code, 0);
@@ -521,6 +951,7 @@ export async function exerciseForegroundIdle({
     const observations = requireIdleObservations(
       JSON.parse(await readFile(auditPath, "utf8")),
     );
+    checkpoint = "preservation";
     assert.equal(await portClosed(port), true);
     const afterStop = runtimeIdentity(projectId);
     assert.equal(afterStop.running, false);
@@ -543,6 +974,8 @@ export async function exerciseForegroundIdle({
     );
     assert.equal(verified.status, "success");
     cli(["stop"]);
+    checkpoint = "verified";
+    outcome = "passed";
     return {
       ...result,
       observations,
@@ -557,7 +990,18 @@ export async function exerciseForegroundIdle({
       scope:
         "Synthetic cooperative PostgreSQL application; no hosted provider, missing-signal, or sequence-regression acceptance claim.",
     };
+  } catch (error) {
+    primaryFailure = true;
+    throw error;
   } finally {
-    await session.stop();
+    await capture("before-owned-stop");
+    try {
+      await session.stop();
+    } catch (error) {
+      ownedStopFailed = true;
+      if (!primaryFailure) throw error;
+    } finally {
+      await capture("after-owned-stop");
+    }
   }
 }

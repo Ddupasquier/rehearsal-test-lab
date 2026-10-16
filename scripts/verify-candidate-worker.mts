@@ -734,6 +734,17 @@ try {
           ),
           cli: (args) => cli(project, args),
           trackTemporaryFile: (path) => temporaryIdlePaths.add(path),
+          recordDiagnostics: async (diagnostic) => {
+            const names = {
+              "before-owned-stop": "foreground-idle-before-owned-stop.json",
+              "after-owned-stop": "foreground-idle-after-owned-stop.json",
+            } as const;
+            await writeFile(
+              resolve(reportDirectory, names[diagnostic.capture]),
+              `${JSON.stringify(diagnostic, null, 2)}\n`,
+              { mode: 0o600, flag: "wx" },
+            );
+          },
         }),
       );
     }

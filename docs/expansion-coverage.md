@@ -102,6 +102,11 @@ shutdown or forced kill can leave resources and leases; use `isolation.json` and
 labels to investigate. Failed workspaces contain ignored synthetic credentials: keep them
 local and delete them when diagnosis is complete. No global Docker prune is used.
 
+Foreground idle checks preserve owner-only, closed-field diagnostics in the report
+directory before and after stopping the owned session. These files survive fixture
+cleanup; see the [runbook](runbook.md). Diagnostic probes have separate short deadlines
+and cannot replace the original acceptance failure or turn an interruption into a pass.
+
 Timing and package-size measurements are evidence, not performance gates yet. Runner RSS
 excludes subprocess and Docker memory; establish repeated measurements before setting
 budgets or comparing different hardware.
