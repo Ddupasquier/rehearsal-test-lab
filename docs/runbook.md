@@ -128,6 +128,41 @@ A pass does not prove real VM shutdown or memory release. Those observations nee
 separately authorized exclusive test environment. This executable simulation supports
 macOS/Linux; Windows refuses before installation rather than using a shell fallback.
 
+### Check operation history without Docker
+
+```bash
+node --import tsx scripts/verify-operation-activity.mts /absolute/path/to/candidate.tgz
+```
+
+This focused check installs the exact artifact in a fresh private consumer. It creates
+one synthetic baseline, refuses an unconfirmed migration before startup, and checks
+public activity history, read-only stability, sibling isolation and preserved inputs.
+Docker, Colima and Supabase calls are denied and audited; no service is started.
+Require `test-results/operation-activity/<run>/operation-activity.json` to pass with
+`cleanup: "removed"`. The report includes safe public samples for the extension's
+activity-contract check.
+
+This is terminal-idle history coverage, not live progress, cancellation, database or
+native VS Code proof. Executable deny fixtures require macOS/Linux; Windows refuses
+without a shell fallback. Ordinary full candidate acceptance remains unchanged.
+
+For configuration and comparison changes, opt into the additional editor contract check:
+
+```bash
+node --import tsx scripts/verify-operation-activity.mts /absolute/path/to/candidate.tgz --editor-review
+```
+
+It creates a second synthetic baseline and a separate nested-config fixture. Public
+metadata must show the actual retained and active generations. Configuration proposals
+are validated twice without writing; stale and malformed proposals must refuse. Reviewed
+files and the original immutable generation must survive. Require `editorReview.status`
+to be `"passed"`, the main report to pass, and cleanup to be `"removed"`.
+
+The extension's [CLI audit](https://github.com/Ddupasquier/rehearsal-vscode/blob/main/docs/cli-contract-report.md)
+owns the companion that consumes these samples through production parsing, comparison
+and JSON/Markdown report generation. Neither check proves a native save dialog, editor
+write, running database or real provider login.
+
 ## Supabase lifecycle
 
 This workflow uses two local runtimes:
