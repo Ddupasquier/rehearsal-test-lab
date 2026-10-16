@@ -6,6 +6,51 @@ import {
   requireString,
 } from "../shared/validation.mts";
 
+export const RESOURCE_PROFILES = ["postgresql", "application", "full"] as const;
+export type ResourceProfile = (typeof RESOURCE_PROFILES)[number];
+
+/** An explicit focused run never certifies omitted profiles. */
+export function selectResourceProfiles(
+  arguments_: readonly string[],
+): readonly ResourceProfile[] {
+  if (arguments_.length === 0) return RESOURCE_PROFILES;
+  const selected = arguments_[0]?.replace(/^--profile=/u, "");
+  if (
+    arguments_.length !== 1 ||
+    !arguments_[0]?.startsWith("--profile=") ||
+    !RESOURCE_PROFILES.includes(selected as ResourceProfile)
+  )
+    throw new Error(
+      "Use at most one --profile=postgresql|application|full selection.",
+    );
+  return [selected as ResourceProfile];
+}
+
+/** Cover every declared data destination without creating an anonymous volume. */
+export function profileProbeTmpfsMounts(value: unknown): string[] {
+  const destinations =
+    value === null
+      ? []
+      : Object.keys(requireObject(value, "Image volume declarations"));
+  if (
+    destinations.length > 8 ||
+    destinations.some(
+      (path) =>
+        !/^\/[a-zA-Z0-9_./-]{1,255}$/u.test(path) ||
+        path.includes("//") ||
+        path.endsWith("/") ||
+        path.split("/").some((part) => part === "." || part === ".."),
+    )
+  )
+    throw new Error(
+      "Probe image volume destinations are not bounded canonical absolute paths.",
+    );
+  return destinations.flatMap((destination) => [
+    "--mount",
+    `type=tmpfs,destination=${destination}`,
+  ]);
+}
+
 export function localProfileEndpoint(value: unknown): value is string {
   if (typeof value !== "string" || /[\r\n\0]/u.test(value)) return false;
   if (/^npipe:\/{4}(?:\.|localhost)\/pipe\/[a-z0-9_.-]+$/iu.test(value))
