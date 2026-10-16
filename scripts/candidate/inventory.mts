@@ -45,9 +45,36 @@ export interface ProfileInventoryExpectation {
   state: "running" | "stopped" | "absent" | "unavailable";
   presence: "created" | "not-created" | "unknown";
   receipt: "compatible" | "unknown";
+  receiptReason:
+    | "supported-receipt-format-and-provider"
+    | "receipt-unavailable"
+    | "provider-not-recorded";
   review: "due" | "not-due" | "unknown";
   staleAfterSeconds: number;
   baseline: ReturnType<typeof readPublicProfileBaseline> | null;
+}
+
+/** The immutable published rc.7 Supabase writer omits target; do not infer it. */
+export function expectedRecordedProfileReceipt({
+  provider,
+  version,
+  sha256,
+}: {
+  provider: ProfileInventoryExpectation["provider"];
+  version: string;
+  sha256: string;
+}): Pick<ProfileInventoryExpectation, "receipt" | "receiptReason"> {
+  const publishedRc7WithoutSupabaseTarget =
+    provider === "supabase" &&
+    version === "0.1.0-rc.7" &&
+    sha256 ===
+      "e2bf8d40456ebf7b8b1b2526e5d774f45f8d53ee25358cd62f5f8b65bf5c556b";
+  return publishedRc7WithoutSupabaseTarget
+    ? { receipt: "unknown", receiptReason: "provider-not-recorded" }
+    : {
+        receipt: "compatible",
+        receiptReason: "supported-receipt-format-and-provider",
+      };
 }
 
 export function assertPublicProfileInventory(
@@ -124,14 +151,18 @@ export function assertPublicProfileInventory(
     classification.receipt,
     "Recorded compatibility",
   );
+  if (expected.receiptReason === "provider-not-recorded") {
+    assert.equal(expected.provider, "supabase");
+    assert.equal(expected.version, "0.1.0-rc.7");
+    assert.equal(expected.receipt, "unknown");
+    assert.ok(
+      expected.baseline,
+      "Missing provider evidence must retain baseline provenance.",
+    );
+  }
   assert.equal(receipt.state, expected.receipt);
   assert.equal(receipt.scope, "format-and-provider-only");
-  assert.equal(
-    receipt.reason,
-    expected.receipt === "compatible"
-      ? "supported-receipt-format-and-provider"
-      : "receipt-unavailable",
-  );
+  assert.equal(receipt.reason, expected.receiptReason);
   const review = requireObject(classification.review, "Age review");
   assert.equal(review.state, expected.review);
   assert.equal(review.staleAfterSeconds, expected.staleAfterSeconds);
@@ -200,6 +231,7 @@ export function assertPublicProfileInventory(
     state: expected.state,
     presence: expected.presence,
     receipt: expected.receipt,
+    receiptReason: expected.receiptReason,
     review: expected.review,
     retention: "persistent",
     dataPersistence: "preserved-on-stop",
