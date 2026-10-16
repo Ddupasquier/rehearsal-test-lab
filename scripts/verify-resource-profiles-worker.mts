@@ -22,9 +22,19 @@ import {
   selectResourceProfiles,
   RESOURCE_PROFILES,
   profileProbeTmpfsMounts,
+  profileMeasurementScope,
+  profileDatabaseContainerName,
+  requireProfileDatabaseContainer,
+  PROFILE_PERSISTENCE_EDIT_SQL,
+  PROFILE_PERSISTENCE_QUERY_SQL,
+  readProfilePersistenceSnapshot,
+  assertProfileRestartPersistence,
+  runProfileDatabaseProbe,
 } from "./candidate/resource-profiles.mts";
+import { exerciseServiceRequirements } from "./candidate/service-requirements.mts";
 import {
   assertPublicProfileInventory,
+  expectedRecordedProfileReceipt,
   readPublicProfileBaseline,
   requireStaleProfileRefusal,
 } from "./candidate/inventory.mts";
@@ -194,9 +204,69 @@ const bindingsForIds = (ids: readonly string[]) => {
   };
 };
 const identities = (value: ReturnType<typeof bindings>) => ({
-  containers: value.containers.map((entry) => entry.id),
+  containers: value.containers.map((entry) =>
+    requireString(entry.id, "Owned container identity"),
+  ),
   volumes: value.volumes,
 });
+const querySyntheticProfile = (
+  profile: "postgresql" | "application" | "full",
+  projectId: string,
+  sql:
+    typeof PROFILE_PERSISTENCE_EDIT_SQL | typeof PROFILE_PERSISTENCE_QUERY_SQL,
+) => {
+  assert.ok(
+    sql === PROFILE_PERSISTENCE_EDIT_SQL ||
+      sql === PROFILE_PERSISTENCE_QUERY_SQL,
+  );
+  const probe = (args: readonly string[]) =>
+    runProfileDatabaseProbe(args, { endpoint });
+  const probeEngineId = () =>
+    requireString(
+      JSON.parse(probe(["info", "--format", "{{json .ID}}"])),
+      "Pinned probe engine identity",
+    );
+  assert.equal(
+    probeEngineId(),
+    originalEngineId,
+    "The profiling engine changed.",
+  );
+  const id = requireProfileDatabaseContainer(
+    JSON.parse(
+      probe([
+        "container",
+        "inspect",
+        "--format",
+        '{"id":{{json .Id}},"name":{{json .Name}},"running":{{json .State.Running}},"labels":{{json .Config.Labels}}}',
+        profileDatabaseContainerName(profile, projectId),
+      ]),
+    ),
+    profile,
+    projectId,
+  );
+  assert.equal(
+    probeEngineId(),
+    originalEngineId,
+    "The profiling engine changed.",
+  );
+  return probe([
+    "exec",
+    id,
+    "psql",
+    "--no-psqlrc",
+    "--quiet",
+    "--username",
+    "postgres",
+    "--dbname",
+    "postgres",
+    "--tuples-only",
+    "--no-align",
+    "--set",
+    "ON_ERROR_STOP=1",
+    "--command",
+    sql,
+  ]);
+};
 const refusal = (cwd: string, digest: string) => {
   try {
     cli(cwd, ["stop-stale", `--confirm-stop=${digest}`]);
@@ -485,13 +555,14 @@ async function prepare(
               "storage",
               "postgrest",
               "gateway",
+              "mail",
               "studio",
               "realtime",
               "edge-functions",
               "analytics",
               "image-transforms",
             ]
-          : ["database", "auth", "storage", "postgrest", "gateway"],
+          : ["database", "auth", "storage", "postgrest", "gateway", "mail"],
     },
     containerRuntime: { autoStartColima: false },
     resources: { staleAfterSeconds: 1 },
@@ -568,6 +639,18 @@ try {
     const baseline = readPublicProfileBaseline(
       cli(cwd, ["inspect", "baseline"]),
     );
+    const serviceRequirements = await exerciseServiceRequirements({
+      project: cwd,
+      profile,
+      configurationSource,
+      runId,
+      version: String(artifact.version),
+    });
+    assert.deepEqual(
+      readPublicProfileBaseline(cli(cwd, ["inspect", "baseline"])),
+      baseline,
+      "Pre-start service refusals must preserve the approved baseline.",
+    );
     const expectation = {
       projectId,
       provider:
@@ -579,6 +662,11 @@ try {
       databasePort: profile === "postgresql" ? targetBase + 13 : targetBase + 2,
       staleAfterSeconds: 1,
     };
+    const recordedReceipt = expectedRecordedProfileReceipt({
+      provider: expectation.provider,
+      version: expectation.version,
+      sha256: String(artifact.sha256),
+    });
     const beforeCreation = assertPublicProfileInventory(
       cli(cwd, ["resources"]),
       {
@@ -586,6 +674,7 @@ try {
         state: "absent",
         presence: "not-created",
         receipt: "unknown",
+        receiptReason: "receipt-unavailable",
         review: "not-due",
         baseline: null,
       },
@@ -641,7 +730,7 @@ try {
         ...expectation,
         state: "running",
         presence: "created",
-        receipt: "compatible",
+        ...recordedReceipt,
         review: "due",
         baseline,
       },
@@ -673,6 +762,18 @@ try {
       .filter(Boolean)
       .sort();
     const exactBindings = bindings(filter);
+    assert.equal(
+      querySyntheticProfile(
+        profile,
+        projectId,
+        PROFILE_PERSISTENCE_EDIT_SQL,
+      ).trim(),
+      "1",
+      "The safe synthetic edit must update exactly one row.",
+    );
+    const beforeStopData = readProfilePersistenceSnapshot(
+      querySyntheticProfile(profile, projectId, PROFILE_PERSISTENCE_QUERY_SQL),
+    );
     const negativeControls =
       profile === "postgresql"
         ? await proveStaleRefusals(
@@ -721,28 +822,36 @@ try {
         ...expectation,
         state: "stopped",
         presence: "created",
-        receipt: "compatible",
+        ...recordedReceipt,
         review: "not-due",
         baseline,
       },
     );
     cli(cwd, ["start"]);
     cli(cwd, ["verify"]);
-    assert.deepEqual(identities(bindings(filter)), identities(exactBindings));
-    verifyProfileServices(
-      profile,
-      command("docker", [
-        "container",
-        "ls",
-        "--filter",
-        filter,
-        "--format",
-        "{{.Names}}",
-      ])
-        .stdout.trim()
-        .split(/\s+/u)
-        .filter(Boolean),
+    const restartedBindings = bindings(filter);
+    const restartedServices = command("docker", [
+      "container",
+      "ls",
+      "--filter",
+      filter,
+      "--format",
+      "{{.Names}}",
+    ])
+      .stdout.trim()
+      .split(/\s+/u)
+      .filter(Boolean);
+    const afterRestartData = readProfilePersistenceSnapshot(
+      querySyntheticProfile(profile, projectId, PROFILE_PERSISTENCE_QUERY_SQL),
     );
+    const restartPersistence = assertProfileRestartPersistence({
+      profile,
+      before: identities(exactBindings),
+      after: identities(restartedBindings),
+      services: restartedServices,
+      beforeData: beforeStopData,
+      afterData: afterRestartData,
+    });
     cli(cwd, ["discard"]);
     const inventory = requireObject(
       cli(cwd, ["environments"]).data,
@@ -758,6 +867,7 @@ try {
       state: "absent",
       presence: "not-created",
       receipt: "unknown",
+      receiptReason: "receipt-unavailable",
       review: "not-due",
       baseline: null,
     });
@@ -770,18 +880,14 @@ try {
       profile,
       projectId,
       startupMilliseconds,
-      startupMeasurement:
-        "complete package-owned reset: fresh provisioning, health checks and 100-row baseline restoration",
-      imageCache: extraImages.length
-        ? "startup included new image downloads"
-        : "warm cached images; fresh containers",
-      newCachedImageCount: new Set(extraImages).size,
+      ...profileMeasurementScope(new Set(extraImages).size),
       ...summarizeProfileSamples(samples),
       samples,
       runningServices: names,
       verifiedBaselineRows: 100,
       staleStopRestart:
-        "exact containers retained; restart and native baseline verify passed",
+        "stop retained exact containers/volumes; provider-correct restart and independent synthetic edit persistence passed",
+      restartPersistence,
       cleanup: "owned target absent; baseline retained",
       inventory: {
         beforeCreation,
@@ -790,6 +896,7 @@ try {
         afterDiscard,
       },
       negativeControls,
+      serviceRequirements,
       retainedBindings: identities(exactBindings),
     });
     if (releaseHeavy) {
@@ -846,7 +953,7 @@ try {
   );
   await writeFile(
     resolve(reportDirectory, "profiles.md"),
-    `# Runtime profile measurements\n\nVerdict: ${passed ? "PASS" : "FAIL"}\n\nArtifact SHA-256: ${String(artifact?.sha256 ?? "unverified")}\n\n| Profile | Reset to ready | Containers | Mean memory | Mean CPU |\n| --- | ---: | ---: | ---: | ---: |\n${reports.map((report) => `| ${String(report.profile)} | ${Number(report.startupMilliseconds) / 1000}s | ${String(report.containers)} | ${Math.round(Number(report.meanMemoryUsageBytes) / 1024 ** 2)} MiB | ${Number(report.meanCpuPercent).toFixed(2)}% |`).join("\n")}\n\nStartup measures the complete package-owned reset: fresh container provisioning, health checks and 100-row baseline restoration; it is not a raw Docker start timer. See JSON for new image downloads. These short samples are regression signals, not universal hardware guarantees. Native baseline verification and exact service presence passed only for completed rows. No hosted login or complete optional-service API acceptance was performed.\n${failures.map((failure) => `\nFailure: ${failure}\n`).join("")}`,
+    `# Runtime profile measurements\n\nVerdict: ${passed ? "PASS" : "FAIL"}\n\nArtifact SHA-256: ${String(artifact?.sha256 ?? "unverified")}\n\nPlanned profiles: ${profiles.join(", ")}.\nOmitted profiles: ${RESOURCE_PROFILES.filter((profile) => !profiles.includes(profile)).join(", ") || "none"}; no omitted profile is certified.\n\n| Profile | Reset to ready | Containers | Mean memory | Mean CPU |\n| --- | ---: | ---: | ---: | ---: |\n${reports.map((report) => `| ${String(report.profile)} | ${Number(report.startupMilliseconds) / 1000}s | ${String(report.containers)} | ${Math.round(Number(report.meanMemoryUsageBytes) / 1024 ** 2)} MiB | ${Number(report.meanCpuPercent).toFixed(2)}% |`).join("\n")}\n\nStartup measures the complete package-owned reset: fresh container provisioning, health checks and 100-row baseline restoration, not cold-image or VM boot. Image-set changes are shared-engine observations, not attribution of downloads. CPU/memory are three short owned-container idle samples after a five-second warmup, not host/VM memory or a soak benchmark. Native baseline verification and exact service presence passed only for completed rows. Pre-start refusals use denied infrastructure with narrowly synthetic context metadata; they do not certify omitted runtime profiles. No hosted login or complete optional-service API acceptance was performed.\n${failures.map((failure) => `\nFailure: ${failure}\n`).join("")}`,
   );
   process.exitCode = passed ? 0 : 1;
 }

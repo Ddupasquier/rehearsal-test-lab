@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertPublicProfileInventory,
+  expectedRecordedProfileReceipt,
   readPublicProfileBaseline,
   requireStaleProfileRefusal,
 } from "../scripts/candidate/inventory.mts";
@@ -19,6 +20,7 @@ const expected = {
   state: "running" as const,
   presence: "created" as const,
   receipt: "compatible" as const,
+  receiptReason: "supported-receipt-format-and-provider" as const,
   review: "due" as const,
   staleAfterSeconds: 1,
   baseline,
@@ -97,6 +99,62 @@ test("public inventory proves provider, configured path, persistent owned state 
   supabase.data.environments[0]!.provider = "supabase";
   assertPublicProfileInventory(supabase, { ...expected, provider: "supabase" });
 });
+test("only the exact published rc.7 Supabase artifact expects provider-not-recorded while retaining baseline and writer proof", () => {
+  const artifact = {
+    version: "0.1.0-rc.7",
+    sha256: "e2bf8d40456ebf7b8b1b2526e5d774f45f8d53ee25358cd62f5f8b65bf5c556b",
+  };
+  const receipt = expectedRecordedProfileReceipt({
+    provider: "supabase",
+    ...artifact,
+  });
+  assert.deepEqual(receipt, {
+    receipt: "unknown",
+    receiptReason: "provider-not-recorded",
+  });
+  for (const input of [
+    { provider: "postgresql" as const, ...artifact },
+    { provider: "supabase" as const, ...artifact, version: "0.1.0-rc.8" },
+    { provider: "supabase" as const, ...artifact, sha256: "a".repeat(64) },
+  ])
+    assert.deepEqual(expectedRecordedProfileReceipt(input), {
+      receipt: "compatible",
+      receiptReason: "supported-receipt-format-and-provider",
+    });
+  const value = inventory(),
+    row = value.data.environments[0]!;
+  row.provider = "supabase";
+  row.classification.receipt.state = "unknown";
+  row.classification.receipt.reason = "provider-not-recorded";
+  const supabaseExpected = {
+    ...expected,
+    provider: "supabase" as const,
+    ...receipt,
+  };
+  const result = assertPublicProfileInventory(value, supabaseExpected);
+  assert.equal(result.receiptReason, "provider-not-recorded");
+  assert.deepEqual(result.baseline, baseline);
+  for (const reason of [
+    "receipt-unavailable",
+    "receipt-invalid",
+    "receipt-binding-mismatch",
+  ]) {
+    row.classification.receipt.reason = reason;
+    assert.throws(() => assertPublicProfileInventory(value, supabaseExpected));
+  }
+  row.classification.receipt.reason = "provider-not-recorded";
+  row.provenance.runtime.rehearsalVersion = "0.1.0-rc.4";
+  assert.throws(() => assertPublicProfileInventory(value, supabaseExpected));
+  row.provenance.runtime.rehearsalVersion = expected.version;
+  row.provenance.runtime.baselineDataSha256 = "b".repeat(64);
+  assert.throws(() => assertPublicProfileInventory(value, supabaseExpected));
+  row.provenance.runtime.baselineDataSha256 = baseline.dataSha256;
+  row.provider = "postgresql";
+  assert.throws(() => assertPublicProfileInventory(value, expected));
+  assert.throws(() =>
+    assertPublicProfileInventory(value, { ...expected, ...receipt }),
+  );
+});
 test("absent or unavailable inventory keeps missing receipts unknown, never compatible or freshly verified", () => {
   for (const unavailable of [false, true]) {
     const value = inventory(),
@@ -131,6 +189,7 @@ test("absent or unavailable inventory keeps missing receipts unknown, never comp
       state: unavailable ? "unavailable" : "absent",
       presence: unavailable ? "unknown" : "not-created",
       receipt: "unknown",
+      receiptReason: "receipt-unavailable",
       review: unavailable ? "unknown" : "not-due",
       baseline: null,
     });

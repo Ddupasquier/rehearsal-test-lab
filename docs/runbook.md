@@ -69,15 +69,34 @@ created/running/stopped/absent classification, persistent retention even with
 `lifecycle.run: "stop-after-run"`, recorded baseline/version metadata, and configured
 loopback ports. Receipt compatibility describes format/provider evidence only; ports
 are configured values, and resource age does not prove user inactivity.
+For the exact published rc.7 artifact, Supabase's receipt omits its provider: the
+runner requires `unknown / provider-not-recorded`, while still checking baseline,
+checksum, and recorded writer version. Other artifacts do not inherit this exception.
 
 Each selected profile reviews an exact `stop-stale` plan, stops it without deleting its
 container/volume identities, restarts and verifies the baseline, then discards only that
-owned environment. The PostgreSQL profile additionally changes its disposable cutoff
+owned environment. Independent database queries require all 100 rows and a deliberate
+sandbox edit to survive restart, with identical volume names and creation timestamps.
+PostgreSQL retains its container ID; Supabase may recreate service containers on start.
+The PostgreSQL profile additionally changes its disposable cutoff
 configuration and creates a never-started, independently test-labelled ownership-conflict
 container. Both invalidate the original confirmation without stopping the original
 workload. All image-declared volume paths use tmpfs for that conflict control. Exact-ID
 cleanup rechecks its test label, stopped state and pinned engine before removal; no
 shared engine or unrelated resource is stopped or pruned.
+
+Before startup, the runner also checks required-service refusals through the installed
+CLI using disposable configuration copies. PostgreSQL must refuse Auth; the application
+profile must refuse Realtime; full must refuse a disabled or ambiguous Realtime template.
+Tool doubles allow only the synthetic context reads needed to reach those guards.
+This proves refusal wiring, not a running full-profile service. Supabase profiles must
+also retain the configured mail service. Reviewed files and the baseline stay unchanged.
+These executable refusal fixtures currently require macOS/Linux process ownership;
+they do not establish Windows acceptance.
+
+Startup timings include fresh containers, health checks, and restoring 100 synthetic
+rows. Image-cache changes cannot be attributed to a profile on a shared engine.
+Short container samples do not measure VM startup, host memory, or application load.
 
 Those manual commands use the shared consumer directories and fixed ports; avoid running
 multiple manual sessions against the same consumer.
@@ -92,6 +111,22 @@ npm run onboarding:verify -- /absolute/path/to/rehearsal-db-core-*.tgz
 The check installs the artifact normally in fresh temporary Supabase and PostgreSQL
 projects, so the package-owned install hook is exercised. It also verifies non-destructive
 partial-setup recovery and malformed-config preservation. Record the reported SHA-256.
+
+### Engine ownership guards without a real VM
+
+```bash
+node --import tsx scripts/verify-engine-ownership.mts /absolute/path/to/candidate.tgz
+```
+
+This installs the exact package in an isolated consumer and exercises public commands
+against strict simulated Docker/Colima tools. It checks startup receipts, guarded stop,
+ownership refusals, interruption, target order, and concurrent-operation refusal without
+starting or stopping a real engine. Read `test-results/engine-ownership/<run>/engine-ownership.json`;
+require a passing verdict and successful owned-process cleanup.
+
+A pass does not prove real VM shutdown or memory release. Those observations need a
+separately authorized exclusive test environment. This executable simulation supports
+macOS/Linux; Windows refuses before installation rather than using a shell fallback.
 
 ## Supabase lifecycle
 
