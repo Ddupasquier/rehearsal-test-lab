@@ -6,7 +6,54 @@ import {
   readProfileMetrics,
   summarizeProfileSamples,
   verifyProfileServices,
+  selectResourceProfiles,
+  profileProbeTmpfsMounts,
 } from "../scripts/candidate/resource-profiles.mts";
+
+test("resource profile selection keeps the complete default and rejects ambiguous options", () => {
+  assert.deepEqual(selectResourceProfiles([]), [
+    "postgresql",
+    "application",
+    "full",
+  ]);
+  assert.deepEqual(selectResourceProfiles(["--profile=postgresql"]), [
+    "postgresql",
+  ]);
+  for (const args of [
+    ["postgresql"],
+    ["--profile=unknown"],
+    ["--profile="],
+    ["--profile=postgresql", "--profile=full"],
+  ])
+    assert.throws(() => selectResourceProfiles(args));
+});
+
+test("stopped conflict probes cover all image-declared volume paths without accepting unsafe mounts", () => {
+  assert.deepEqual(profileProbeTmpfsMounts(null), []);
+  assert.deepEqual(
+    profileProbeTmpfsMounts({ "/var/lib/postgresql/data": {}, "/second": {} }),
+    [
+      "--mount",
+      "type=tmpfs,destination=/var/lib/postgresql/data",
+      "--mount",
+      "type=tmpfs,destination=/second",
+    ],
+  );
+  for (const value of [
+    undefined,
+    [],
+    { "/": {} },
+    { relative: {} },
+    { "/a/../b": {} },
+    { "/a//b": {} },
+    { "/a,b": {} },
+    { "/a\n": {} },
+    Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`/volume${index}`, {}]),
+    ),
+  ])
+    assert.throws(() => profileProbeTmpfsMounts(value));
+});
 
 test("resource profiles refuse remote engines before contacting a Docker daemon", () => {
   const calls: string[][] = [];

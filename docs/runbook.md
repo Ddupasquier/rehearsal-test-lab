@@ -54,6 +54,31 @@ Require `profiles.json` and `isolation.json` to pass. The profiles run sequentia
 unique ports and ownership; compare startup and CPU/memory samples on equivalent
 hardware and distinguish any new image downloads. This does not replace application,
 Auth, Storage, or migration acceptance.
+For a focused inventory/lifecycle change, select one profile through the same guarded
+wrapper:
+
+```bash
+npm run resources:verify -- /path/to/candidate.tgz --profile=postgresql
+```
+
+The default still runs PostgreSQL, Supabase `application`, and Supabase `full` in order.
+Both reports name the planned profiles; `profiles.json` also identifies omitted profiles.
+A focused pass does not certify those omitted providers or service profiles.
+The runner asserts the public `resources --json` target/provider/configuration binding,
+created/running/stopped/absent classification, persistent retention even with
+`lifecycle.run: "stop-after-run"`, recorded baseline/version metadata, and configured
+loopback ports. Receipt compatibility describes format/provider evidence only; ports
+are configured values, and resource age does not prove user inactivity.
+
+Each selected profile reviews an exact `stop-stale` plan, stops it without deleting its
+container/volume identities, restarts and verifies the baseline, then discards only that
+owned environment. The PostgreSQL profile additionally changes its disposable cutoff
+configuration and creates a never-started, independently test-labelled ownership-conflict
+container. Both invalidate the original confirmation without stopping the original
+workload. All image-declared volume paths use tmpfs for that conflict control. Exact-ID
+cleanup rechecks its test label, stopped state and pinned engine before removal; no
+shared engine or unrelated resource is stopped or pruned.
+
 Those manual commands use the shared consumer directories and fixed ports; avoid running
 multiple manual sessions against the same consumer.
 To check onboarding by itself, run this from the lab root before either database

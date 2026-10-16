@@ -110,6 +110,30 @@ test("Docker sentinel cleanup removes image-declared anonymous volumes", () => {
   );
 });
 
+test("outer recovery removes anonymous volumes only with its run-labelled sentinel container", async (context) => {
+  const directory = await mkdtemp(resolve(tmpdir(), "rtl-sentinel-recovery-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const bindings = isolationBindings(45000, "sentinel123");
+  const calls: string[][] = [];
+  const command = (_name: string, args: readonly string[] = []) => {
+    calls.push([...args]);
+    const stdout =
+      args[0] === "container" &&
+      args[1] === "ls" &&
+      args.includes(`label=com.rehearsal-test-lab.sentinel=${bindings.prefix}`)
+        ? "exact-test-sentinel"
+        : "";
+    return { stdout, stderr: "", output: stdout };
+  };
+  // Exercise the outer recovery path without invoking the worker's finally.
+  await removeOwnedResources(directory, bindings, command);
+  assert.deepEqual(
+    calls.filter((args) => args[0] === "container" && args[1] === "rm"),
+    [["container", "rm", "--force", "--volumes", "exact-test-sentinel"]],
+  );
+  assert.equal(calls.some((args) => args.includes("prune")), false);
+});
+
 test("parallel acceptance leases and bindings do not share ports or Docker identities", async (context) => {
   const directory = await mkdtemp(resolve(tmpdir(), "rtl-leases-test-"));
   context.after(() => rm(directory, { recursive: true, force: true }));

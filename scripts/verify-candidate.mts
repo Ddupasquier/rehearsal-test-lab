@@ -16,7 +16,11 @@ import {
   sha256File,
 } from "./candidate/process.mts";
 import { errorMessage } from "./shared/validation.mts";
-import { cleanProfileDockerEnvironment, inspectProfileEndpoint } from "./candidate/resource-profiles.mts";
+import {
+  cleanProfileDockerEnvironment,
+  inspectProfileEndpoint,
+  selectResourceProfiles,
+} from "./candidate/resource-profiles.mts";
 
 const root = resolve(import.meta.dirname, "..");
 const upgrading = process.argv[2] === "--upgrade";
@@ -24,16 +28,23 @@ const adopting = process.argv[2] === "--adoption";
 const profiling = process.argv[2] === "--resource-profiles";
 const requested = process.argv[upgrading ? 4 : adopting || profiling ? 3 : 2];
 const previousRequested = upgrading ? process.argv[3] : undefined;
+const profileArguments = profiling ? process.argv.slice(4) : [];
+const selectedProfiles = profiling
+  ? selectResourceProfiles(profileArguments)
+  : undefined;
 if (!upgrading && (requested === "--help" || requested === "-h")) {
   console.log(`Usage: npm run ${profiling ? "resources:verify" : "candidate:verify"} -- /absolute/path/to/rehearsal-db-core-*.tgz
 
 Snapshots the lab and exact artifact into an independent workspace with dedicated
 ports, Docker identities, and package installs. Supabase phases share a resource
 slot to limit memory use. Reports remain in test-results/${profiling ? "resource-profiles" : "candidate-acceptance"}/.
-Failed workspaces are retained for diagnosis; successful workspaces are removed.`);
+Failed workspaces are retained for diagnosis; successful workspaces are removed.${profiling ? "\nOptional: append --profile=postgresql|application|full for one explicitly scoped profile.\nThe default runs all three; omitted profiles are not certified." : ""}`);
   process.exit(0);
 }
-if (!requested || process.argv.length !== (upgrading ? 5 : adopting || profiling ? 4 : 3))
+if (
+  !requested ||
+  (!profiling && process.argv.length !== (upgrading ? 5 : adopting ? 4 : 3))
+)
   throw new Error(
     "Pass one exact candidate tarball: npm run candidate:verify -- /absolute/path/to/rehearsal-db-core-*.tgz",
   );
@@ -55,7 +66,9 @@ const reportDirectory = resolve(
     ? "test-results/upgrade-acceptance"
     : adopting
       ? "test-results/adoption"
-      : profiling ? "test-results/resource-profiles" : "test-results/candidate-acceptance",
+      : profiling
+        ? "test-results/resource-profiles"
+        : "test-results/candidate-acceptance",
   runId,
 );
 const workspace = resolve(reportDirectory, "workspace");
@@ -104,9 +117,11 @@ try {
       [
         "--import",
         "tsx",
-        profiling ? "scripts/verify-resource-profiles-worker.mts" : adopting
-          ? "scripts/verify-adoption-worker.mts"
-          : "scripts/verify-candidate-worker.mts",
+        profiling
+          ? "scripts/verify-resource-profiles-worker.mts"
+          : adopting
+            ? "scripts/verify-adoption-worker.mts"
+            : "scripts/verify-candidate-worker.mts",
         snapshot,
       ],
       {
@@ -124,6 +139,8 @@ try {
           LAB_POSTGRESQL_APP_PORT: String(lease.base + 28),
           LAB_SUPABASE_APP_PORT: String(lease.base + 27),
           LAB_PROFILE_DOCKER_ENDPOINT: profileEndpoint ?? "",
+          LAB_RESOURCE_PROFILE:
+            profileArguments[0]?.slice("--profile=".length) ?? "",
         },
       },
     );
@@ -162,7 +179,20 @@ try {
   }
   if (resourcesMayExist) {
     try {
-      await removeOwnedResources(workspace, bindings, profiling ? (command, args, options = {}) => runCommand(command, args, { ...options, env: { ...options.env, ...cleanProfileDockerEnvironment(profileEndpoint) } }) : runCommand);
+      await removeOwnedResources(
+        workspace,
+        bindings,
+        profiling
+          ? (command, args, options = {}) =>
+              runCommand(command, args, {
+                ...options,
+                env: {
+                  ...options.env,
+                  ...cleanProfileDockerEnvironment(profileEndpoint),
+                },
+              })
+          : runCommand,
+      );
     } catch (error) {
       cleanupFailed = true;
       errors.push(errorMessage(error));
@@ -192,6 +222,7 @@ try {
         startedAt,
         completedAt: new Date().toISOString(),
         artifact: { originalPath: artifact, sha256 },
+        ...(selectedProfiles ? { plannedProfiles: selectedProfiles } : {}),
         ...(previousPath
           ? {
               previousArtifact: {

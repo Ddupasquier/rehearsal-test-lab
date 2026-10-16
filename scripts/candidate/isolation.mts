@@ -338,7 +338,9 @@ export async function removeOwnedResources(
       command("docker", [
         type,
         "rm",
-        ...(type === "container" ? ["--force"] : []),
+        // The worker's finally may never run after interruption. Remove only
+        // this exact run-labelled test sentinel's anonymous image volumes too.
+        ...(type === "container" ? ["--force", "--volumes"] : []),
         id,
       ]);
   }

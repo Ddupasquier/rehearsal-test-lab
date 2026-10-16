@@ -20,6 +20,7 @@ additional coverage. No downstream application defines this lab's architecture o
 | Application          | HTTP readiness and real data proofs; fail closed without database; guided synthetic GitHub account connection and restart/reset behavior                                                                                 | Multi-target and human hosted-provider observations where separately required                                  |
 | Authentication       | Local email/password, refresh, reload, sign-out, token-hash magic link, synthetic GitHub identity, and optional human Google/GitHub OAuth                                                                                | Add another provider only when its reusable configuration contract is reviewed                                 |
 | Cleanup              | Confirmation-based target removal, ownership refusal, unrelated sentinel preservation                                                                                                                                    | Interrupt a full run after useful state exists and verify recovery                                             |
+| Environment inventory | Resource-profile runner checks public provider/configuration bindings, created/running/stopped/absent states, persistent retention, recorded provenance, age cutoff, exact stop/restart identities and discard; PostgreSQL adds changed-config and conflicting-ownership refusal | Extend separately to missing engines and legacy recorded writers without changing shared engine state |
 | Concurrency          | Independent workspace/install/IDs/port blocks; serialized Supabase phase                                                                                                                                                 | Repeat paired full runs on shared development machines                                                         |
 | Performance          | Stage and total durations, package bytes, runner peak RSS                                                                                                                                                                | Larger deterministic datasets and measured Docker/child-process memory                                         |
 | Opt-in shaping       | A shape-capable candidate adds source-snapshot sampling, measured bucket goals, native restores and independent FK/count checks for both profiles; required-cohort failure preserves the prior baseline and sandbox edit | Joint distributions, generated boundary representatives, and graphs above the advertised bounded-memory limits |
@@ -62,6 +63,18 @@ background observer—agents explicitly read and save context as verified state 
 4. Compatibility expansion: `npm run upgrade:verify -- /path/to/previous.tgz /path/to/candidate.tgz`.
    The same consumer must work before and after installation; both exact hashes and
    preserved-state checks are reported.
+5. Inventory/lifecycle iteration: `npm run resources:verify -- /path/to/candidate.tgz --profile=postgresql`
+   uses the ordinary leased wrapper and pinned local Docker endpoint. Omit the selector
+   for all three profiles. Require `profiles.json` and `isolation.json`; their planned
+   scope is authoritative, and a focused pass does not establish omitted-profile coverage.
+
+Resource inventory assertions use installed public CLI JSON and independently inspected
+owned container/volume identities—not private package modules or rewritten runtime
+receipts. Before creation and after discard, missing receipts must remain explicitly
+unknown. Recorded format/provider compatibility does not imply fresh database verification
+or writer-version compatibility. All configured environments preserve data on stop;
+reviewed reset/run can replace it. This scenario does not invent a temporary-helper
+registry or classify another project's resources as disposable.
 
 GitHub runs fast checks on Node 22/24/26 plus PostgreSQL, published adoption, and onboarding.
 Unpublished artifacts still require explicit local selection. Heavy Supabase runs stay
